@@ -7,5 +7,9 @@ repository = "https://github.com/frabert/riff"
 readme = "README.md"
 license = "MIT"
 
+[badges]
+travis-ci = { repository = "frabert/riff" }
+codecov = { repository = "frabert/riff" }
+
 [dependencies]
 byteorder = "1"
