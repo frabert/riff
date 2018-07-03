@@ -115,12 +115,6 @@ pub struct Chunk {
   pub content: ChunkContent
 }
 
-impl std::fmt::Display for Chunk {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}: {}", self.id, self.content)
-  }
-}
-
 impl Chunk {
   fn new(id: ChunkId, content: ChunkContent) -> Chunk {
     Chunk {
@@ -234,21 +228,6 @@ pub enum ChunkContent {
 
   /// The contents of a terminal chunk
   Subchunk(Vec<u8>)
-}
-
-impl std::fmt::Display for ChunkContent {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-          ChunkContent::Subchunk(v) => write!(f, "[data len: {}]", v.len()),
-          ChunkContent::List { form_type, subchunks } => {
-            write!(f, "[{}: \n", form_type)?;
-            for x in subchunks.iter() {
-              write!(f, "  {}", x)?;
-            }
-            write!(f, "]\n")
-          }
-        }
-  }
 }
 
 fn read_id(reader: &mut Read) -> io::Result<ChunkId> {
@@ -390,5 +369,16 @@ mod tests {
       assert_eq!(LIST_ID.as_str(), "LIST");
       assert_eq!(SEQT_ID.as_str(), "seqt");
       assert_eq!(ChunkId::new("123 ").unwrap().as_str(), "123 ");
+    }
+
+    #[test]
+    fn chunkid_format() {
+      assert_eq!(format!("{}", RIFF_ID), "'RIFF'");
+      assert_eq!(format!("{}", LIST_ID), "'LIST'");
+      assert_eq!(format!("{}", SEQT_ID), "'seqt'");
+
+      assert_eq!(format!("{:?}", RIFF_ID), "'RIFF'");
+      assert_eq!(format!("{:?}", LIST_ID), "'LIST'");
+      assert_eq!(format!("{:?}", SEQT_ID), "'seqt'");
     }
 }
