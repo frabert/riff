@@ -80,8 +80,8 @@ impl ChunkId {
   /// # use std::error::Error;
   /// #
   /// # fn try_main() -> Result<(), Box<Error>> {
-  /// assert!(riff::ChunkId::new("RIFF")?.is_list());
-  /// assert!(!riff::ChunkId::new("test")?.is_list());
+  /// assert!(riff::ChunkId::new("RIFF")?.has_subchunks());
+  /// assert!(!riff::ChunkId::new("test")?.has_subchunks());
   /// #   Ok(())
   /// # }
   /// #
@@ -89,8 +89,14 @@ impl ChunkId {
   /// #     try_main().unwrap();
   /// # }
   /// ```
-  pub fn is_list(&self) -> bool {
+  pub fn has_subchunks(&self) -> bool {
     self == &RIFF_ID || self == &LIST_ID || self == &SEQT_ID
+  }
+  /// Whether the id is a valid list chunk id, and has a form type designator.
+  ///
+  /// "seqt" chunks don't have form type designators.
+  pub fn has_form_type(&self) -> bool {
+    self == &RIFF_ID || self == &LIST_ID
   }
 }
 
@@ -142,7 +148,7 @@ impl Chunk {
   /// # }
   pub fn new_riff(form_id: ChunkId, content: Vec<Chunk>) -> Chunk {
     Chunk::new(RIFF_ID.clone(), ChunkContent::List {
-      form_type: form_id,
+      form_type: Some(form_id),
       subchunks: content
     })
   }
@@ -166,7 +172,7 @@ impl Chunk {
   /// # }
   pub fn new_list(form_id: ChunkId, content: Vec<Chunk>) -> Chunk {
     Chunk::new(LIST_ID.clone(), ChunkContent::List {
-      form_type: form_id,
+      form_type: Some(form_id),
       subchunks: content
     })
   }
@@ -179,18 +185,17 @@ impl Chunk {
   /// #
   /// # fn try_main() -> Result<(), Box<Error>> {
   /// let data_id = riff::ChunkId::new("test")?;
-  /// let seqt_id = riff::ChunkId::new("foo ")?;
   /// let data_chunk = riff::Chunk::new_data(data_id, vec![0x00, 0x00]);
-  /// let seqt_chunk = riff::Chunk::new_seqt(seqt_id, vec![data_chunk]);
+  /// let seqt_chunk = riff::Chunk::new_seqt(vec![data_chunk]);
   /// #   Ok(())
   /// # }
   /// #
   /// # fn main() {
   /// #     try_main().unwrap();
   /// # }
-  pub fn new_seqt(form_id: ChunkId, content: Vec<Chunk>) -> Chunk {
+  pub fn new_seqt(content: Vec<Chunk>) -> Chunk {
     Chunk::new(SEQT_ID.clone(), ChunkContent::List {
-      form_type: form_id,
+      form_type: None,
       subchunks: content
     })
   }
@@ -221,7 +226,7 @@ pub enum ChunkContent {
   /// The contents of a `RIFF`, `LIST`, or `seqt` chunk
   List {
     /// The type of list form
-    form_type: ChunkId,
+    form_type: Option<ChunkId>,
     /// The contained subchunks
     subchunks: Vec<Chunk>
   },
@@ -265,9 +270,9 @@ fn read_header(reader: &mut Read) -> io::Result<(ChunkId, u32)> {
 /// The function will fail if the stream doesn't contain a valid RIFF chunk
 pub fn read_chunk(reader: &mut Read) -> io::Result<(Chunk, u32)> {
   let (id, len) = read_header(reader)?;
-  if id.is_list() {
-    let chunk_type = read_id(reader)?;
-    let mut count: u32 = 4;
+  if id.has_subchunks() {
+    let chunk_type = if id.has_form_type() { Some(read_id(reader)?) } else { None };
+    let mut count: u32 = if id.has_form_type() { 4 } else { 0 };
     let mut data: Vec<Chunk> = Vec::new();
     while count < len {
       let (chunk, chunk_len) = read_chunk(reader)?;
@@ -290,7 +295,10 @@ fn calc_len(chunks: &Vec<Chunk>) -> u32 {
       let len = v.len() as u32;
       acc + len + len % 2 + 8
     },
-    ChunkContent::List { form_type: _, subchunks } => acc + 12 + calc_len(&subchunks)
+    ChunkContent::List { form_type, subchunks } => {
+      let metadata_len = if form_type.is_some() { 12 } else { 8 }; 
+      acc + metadata_len + calc_len(&subchunks)
+    }
   })
 }
 
@@ -328,8 +336,10 @@ pub fn write_chunk(writer: &mut Write, chunk: &Chunk) -> io::Result<()> {
     },
     ChunkContent::List { form_type, subchunks } => {
       let len = calc_len(&subchunks);
-      writer.write_u32::<LittleEndian>(len + 4)?;
-      writer.write(&form_type.value)?;
+      writer.write_u32::<LittleEndian>(if form_type.is_some() {len + 4 } else { len })?;
+      if let Some(form_type) = form_type {
+        writer.write(&form_type.value)?;
+      }
       for subchunk in subchunks {
         write_chunk(writer, subchunk)?;
       }
@@ -357,10 +367,10 @@ mod tests {
 
     #[test]
     fn chunkid_lists() {
-        assert!(ChunkId::new("RIFF").unwrap().is_list());
-        assert!(ChunkId::new("LIST").unwrap().is_list());
-        assert!(ChunkId::new("seqt").unwrap().is_list());
-        assert!(!ChunkId::new("test").unwrap().is_list());
+        assert!(ChunkId::new("RIFF").unwrap().has_subchunks());
+        assert!(ChunkId::new("LIST").unwrap().has_subchunks());
+        assert!(ChunkId::new("seqt").unwrap().has_subchunks());
+        assert!(!ChunkId::new("test").unwrap().has_subchunks());
     }
 
     #[test]
