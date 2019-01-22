@@ -46,7 +46,7 @@ fn read_test_1() {
   let test_3 = Chunk::new_data(TEST_ID.clone(), str3);
 
   let tst1 = Chunk::new_list(TST1_ID.clone(), vec![test_1, test_2]);
-  let tst2 = Chunk::new_seqt(TST2_ID.clone(), vec![test_3]);
+  let tst2 = Chunk::new_seqt(vec![test_3]);
 
   let (chunk, _len) = riff::read_chunk(&mut file).unwrap();
   let expected = Chunk::new_riff(SMPL_ID.clone(), vec![tst1, tst2]);
@@ -65,7 +65,7 @@ fn read_test_2() {
   let test_3 = Chunk::new_data(TEST_ID.clone(), str3);
 
   let tst1 = Chunk::new_list(TST1_ID.clone(), vec![test_1, test_2]);
-  let tst2 = Chunk::new_seqt(TST2_ID.clone(), vec![test_3]);
+  let tst2 = Chunk::new_seqt(vec![test_3]);
 
   let (chunk, _len) = riff::read_chunk(&mut file).unwrap();
   let expected = Chunk::new_riff(SMPL_ID.clone(), vec![tst1, tst2]);
