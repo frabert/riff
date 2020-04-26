@@ -3,14 +3,12 @@
 //! `riff` provides utility methods for reading and writing RIFF-formatted files,
 //! such as Microsoft Wave, AVI or DLS files.
 
-extern crate byteorder;
-
 use std::fmt;
-use std::io;
 use std::io::Read;
 use std::io::Write;
-
-use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::convert::TryInto;
 
 /// A chunk id, also known as FourCC
 #[derive(PartialEq, Eq, Clone)]
@@ -70,34 +68,6 @@ impl ChunkId {
       Ok(ChunkId { value: a })
     }
   }
-
-  /// Whether the id is a valid list chunk id.
-  /// 
-  /// The function returns true only if the id is one of "RIFF", "LIST" or "seqt"
-  /// 
-  /// # Examples
-  /// ```
-  /// # use std::error::Error;
-  /// #
-  /// # fn try_main() -> Result<(), Box<Error>> {
-  /// assert!(riff::ChunkId::new("RIFF")?.has_subchunks());
-  /// assert!(!riff::ChunkId::new("test")?.has_subchunks());
-  /// #   Ok(())
-  /// # }
-  /// #
-  /// # fn main() {
-  /// #     try_main().unwrap();
-  /// # }
-  /// ```
-  pub fn has_subchunks(&self) -> bool {
-    self == &RIFF_ID || self == &LIST_ID || self == &SEQT_ID
-  }
-  /// Whether the id is a valid list chunk id, and has a form type designator.
-  ///
-  /// "seqt" chunks don't have form type designators.
-  pub fn has_form_type(&self) -> bool {
-    self == &RIFF_ID || self == &LIST_ID
-  }
 }
 
 impl fmt::Display for ChunkId {
@@ -112,240 +82,196 @@ impl fmt::Debug for ChunkId {
   }
 }
 
+#[derive(PartialEq, Debug)]
+pub enum ChunkContents {
+  Data(ChunkId, Vec<u8>),
+  Children(ChunkId, ChunkId, Vec<ChunkContents>),
+  ChildrenNoType(ChunkId, Vec<ChunkContents>)
+}
+
+impl ChunkContents {
+  pub fn write<T>(&self, writer: &mut T) -> std::io::Result<u64>
+      where T: Seek + Write {
+    match &self {
+      &ChunkContents::Data(id, data) => {
+        if data.len() as u64 > u32::MAX as u64 {
+          use std::io::{Error, ErrorKind};
+          return Err(Error::new(ErrorKind::InvalidData, "Data too big"));
+        }
+
+        let len = data.len() as u32;
+        writer.write_all(&id.value)?;
+        writer.write_all(&len.to_le_bytes())?;
+        writer.write_all(&data)?;
+        if len % 2 != 0 {
+          let single_byte: [u8; 1] = [0];
+          writer.write_all(&single_byte)?;
+        }
+        Ok((8 + len + (len % 2)).into())
+      }
+      &ChunkContents::Children(id, chunk_type, children) => {
+        writer.write_all(&id.value)?;
+        let len_pos = writer.seek(SeekFrom::Current(0))?;
+        let zeros: [u8; 4] = [0, 0, 0, 0];
+        writer.write_all(&zeros)?;
+        writer.write_all(&chunk_type.value)?;
+        let mut total_len: u64 = 4;
+        for child in children {
+          total_len = total_len + child.write(writer)?;
+        }
+
+        if total_len > u32::MAX as u64 {
+          use std::io::{Error, ErrorKind};
+          return Err(Error::new(ErrorKind::InvalidData, "Data too big"));
+        }
+
+        let end_pos = writer.seek(SeekFrom::Current(0))?;
+        writer.seek(SeekFrom::Start(len_pos))?;
+        writer.write_all(&(total_len as u32).to_le_bytes())?;
+        writer.seek(SeekFrom::Start(end_pos))?;
+
+        Ok((12 + total_len + (total_len % 2)).into())
+      }
+      &ChunkContents::ChildrenNoType(id, children) => {
+        writer.write_all(&id.value)?;
+        let len_pos = writer.seek(SeekFrom::Current(0))?;
+        let zeros: [u8; 4] = [0, 0, 0, 0];
+        writer.write_all(&zeros)?;
+        let mut total_len: u64 = 0;
+        for child in children {
+          total_len = total_len + child.write(writer)?;
+        }
+
+        if total_len > u32::MAX as u64 {
+          use std::io::{Error, ErrorKind};
+          return Err(Error::new(ErrorKind::InvalidData, "Data too big"));
+        }
+
+        let end_pos = writer.seek(SeekFrom::Current(0))?;
+        writer.seek(SeekFrom::Start(len_pos))?;
+        writer.write_all(&(total_len as u32).to_le_bytes())?;
+        writer.seek(SeekFrom::Start(end_pos))?;
+
+        Ok((8 + total_len + (total_len % 2)).into())
+      }
+    }
+  }
+}
+
 /// A chunk, also known as a form
 #[derive(PartialEq, Eq, Debug)]
 pub struct Chunk {
-  /// The id of the chunk
-  pub id: ChunkId,
-  /// The contents of the chunk
-  pub content: ChunkContent
+  pos: u64,
+  id: ChunkId,
+  len: u32,
+}
+
+/// An iterator over the children of a `Chunk`
+pub struct Iter<'a, T>
+    where T: Seek + Read {
+  end: u64,
+  cur: u64,
+  stream: &'a mut T
+}
+
+impl<'a, T> Iterator for Iter<'a, T>
+    where T: Seek + Read {
+  type Item = Chunk;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    if self.cur >= self.end {
+      return None
+    }
+
+    let chunk = Chunk::read(&mut self.stream, self.cur).unwrap();
+    let len = chunk.len() as u64;
+    self.cur = self.cur + len + 8 + (len % 2);
+    Some(chunk)
+  }
 }
 
 impl Chunk {
-  fn new(id: ChunkId, content: ChunkContent) -> Chunk {
-    Chunk {
-      id: id,
-      content: content
-    }
+  /// Returns the `ChunkId` of this chunk.
+  pub fn id(&self) -> ChunkId {
+    self.id.clone()
   }
 
-  /// Creates a new RIFF chunk.
+  /// Returns the number of bytes in this chunk.
+  pub fn len(&self) -> u32 {
+    self.len
+  }
+
+  /// Returns the offset of this chunk from the start of the stream.
+  pub fn offset(&self) -> u64 {
+    self.pos
+  }
+
+  /// Reads the chunk type of this chunk.
   /// 
-  /// # Examples
-  /// ```
-  /// # use std::error::Error;
-  /// #
-  /// # fn try_main() -> Result<(), Box<Error>> {
-  /// let data_id = riff::ChunkId::new("test")?;
-  /// let riff_id = riff::ChunkId::new("foo ")?;
-  /// let data_chunk = riff::Chunk::new_data(data_id, vec![0x00, 0x00]);
-  /// let riff_chunk = riff::Chunk::new_list(riff_id, vec![data_chunk]);
-  /// #   Ok(())
-  /// # }
-  /// #
-  /// # fn main() {
-  /// #     try_main().unwrap();
-  /// # }
-  pub fn new_riff(form_id: ChunkId, content: Vec<Chunk>) -> Chunk {
-    Chunk::new(RIFF_ID.clone(), ChunkContent::List {
-      form_type: Some(form_id),
-      subchunks: content
+  /// Generally only valid for `RIFF` and `LIST` chunks.
+  pub fn read_type<T>(&self, stream: &mut T) -> std::io::Result<ChunkId>
+      where T: Read + Seek {
+    stream.seek(SeekFrom::Start(self.pos + 8))?;
+
+    let mut fourcc : [u8; 4] = [0; 4];
+    stream.read_exact(&mut fourcc)?;
+
+    Ok(ChunkId { value: fourcc })
+  }
+
+  /// Reads a chunk from the specified position in the stream.
+  pub fn read<T>(stream: &mut T, pos: u64) -> std::io::Result<Chunk>
+      where T: Read + Seek {
+    stream.seek(SeekFrom::Start(pos))?;
+
+    let mut fourcc : [u8; 4] = [0; 4];
+    stream.read_exact(&mut fourcc)?;
+
+    let mut len : [u8; 4] = [0; 4];
+    stream.read_exact(&mut len)?;
+
+    Ok(Chunk {
+      pos: pos,
+      id: ChunkId { value: fourcc },
+      len: u32::from_le_bytes(len)
     })
   }
+  
+  /// Reads the entirety of the contents of a chunk.
+  pub fn read_contents<T>(&self, stream: &mut T) -> std::io::Result<Vec<u8>>
+      where T: Read + Seek {
+    stream.seek(SeekFrom::Start(self.pos + 8))?;
 
-  /// Creates a new LIST chunk.
+    let mut data: Vec<u8> = vec![0; self.len.try_into().unwrap()];
+    stream.read_exact(&mut data)?;
+
+    Ok(data)
+  }
+
+  /// Returns an iterator over the children of the chunk.
   /// 
-  /// # Examples
-  /// ```
-  /// # use std::error::Error;
-  /// #
-  /// # fn try_main() -> Result<(), Box<Error>> {
-  /// let data_id = riff::ChunkId::new("test")?;
-  /// let list_id = riff::ChunkId::new("foo ")?;
-  /// let data_chunk = riff::Chunk::new_data(data_id, vec![0x00, 0x00]);
-  /// let list_chunk = riff::Chunk::new_list(list_id, vec![data_chunk]);
-  /// #   Ok(())
-  /// # }
-  /// #
-  /// # fn main() {
-  /// #     try_main().unwrap();
-  /// # }
-  pub fn new_list(form_id: ChunkId, content: Vec<Chunk>) -> Chunk {
-    Chunk::new(LIST_ID.clone(), ChunkContent::List {
-      form_type: Some(form_id),
-      subchunks: content
-    })
-  }
-
-  /// Creates a new seqt chunk.
-  /// 
-  /// # Examples
-  /// ```
-  /// # use std::error::Error;
-  /// #
-  /// # fn try_main() -> Result<(), Box<Error>> {
-  /// let data_id = riff::ChunkId::new("test")?;
-  /// let data_chunk = riff::Chunk::new_data(data_id, vec![0x00, 0x00]);
-  /// let seqt_chunk = riff::Chunk::new_seqt(vec![data_chunk]);
-  /// #   Ok(())
-  /// # }
-  /// #
-  /// # fn main() {
-  /// #     try_main().unwrap();
-  /// # }
-  pub fn new_seqt(content: Vec<Chunk>) -> Chunk {
-    Chunk::new(SEQT_ID.clone(), ChunkContent::List {
-      form_type: None,
-      subchunks: content
-    })
-  }
-
-  /// Creates a new data chunk.
-  /// 
-  /// # Examples
-  /// ```
-  /// # use std::error::Error;
-  /// #
-  /// # fn try_main() -> Result<(), Box<Error>> {
-  /// let id = riff::ChunkId::new("test")?;
-  /// let chunk = riff::Chunk::new_data(id, vec![0x00, 0x00]);
-  /// #   Ok(())
-  /// # }
-  /// #
-  /// # fn main() {
-  /// #     try_main().unwrap();
-  /// # }
-  pub fn new_data(form_id: ChunkId, content: Vec<u8>) -> Chunk {
-    Chunk::new(form_id, ChunkContent::Subchunk(content))
-  }
-}
-
-/// The contents of a chunk
-#[derive(PartialEq, Eq, Debug)]
-pub enum ChunkContent {
-  /// The contents of a `RIFF`, `LIST`, or `seqt` chunk
-  List {
-    /// The type of list form
-    form_type: Option<ChunkId>,
-    /// The contained subchunks
-    subchunks: Vec<Chunk>
-  },
-
-  /// The contents of a terminal chunk
-  Subchunk(Vec<u8>)
-}
-
-fn read_id(reader: &mut Read) -> io::Result<ChunkId> {
-  let mut fourcc : [u8; 4] = [0; 4];
-  reader.read_exact(&mut fourcc)?;
-  Ok(ChunkId { value: fourcc })
-}
-
-fn read_header(reader: &mut Read) -> io::Result<(ChunkId, u32)> {
-  let id = read_id(reader)?;
-  let length = reader.read_u32::<LittleEndian>().unwrap();
-  Ok((id, length))
-}
-
-/// Reads a chunk. Returns the read chunk and the number of bytes read.
-///
-/// # Examples
-///
-/// ```
-/// # use std::error::Error;
-/// # use std::fs::File;
-/// #
-/// # fn try_main() -> Result<(), Box<Error>> {
-/// let mut reader = File::open("test_assets/test.riff")?;
-/// let (chunk, _len) = riff::read_chunk(&mut reader)?;
-/// #   Ok(())
-/// # }
-/// #
-/// # fn main() {
-/// #     try_main().unwrap();
-/// # }
-/// ```
-/// 
-/// # Errors
-/// The function will fail if the stream doesn't contain a valid RIFF chunk
-pub fn read_chunk(reader: &mut Read) -> io::Result<(Chunk, u32)> {
-  let (id, len) = read_header(reader)?;
-  if id.has_subchunks() {
-    let chunk_type = if id.has_form_type() { Some(read_id(reader)?) } else { None };
-    let mut count: u32 = if id.has_form_type() { 4 } else { 0 };
-    let mut data: Vec<Chunk> = Vec::new();
-    while count < len {
-      let (chunk, chunk_len) = read_chunk(reader)?;
-      data.push(chunk);
-      count = count + chunk_len + 8;
-    }
-    Ok((Chunk::new(id, ChunkContent::List { form_type: chunk_type, subchunks: data }), count))
-  } else {
-    let actual_len = len + len % 2;
-    let mut data: Vec<u8> = vec![0; actual_len as usize];
-    reader.read_exact(&mut data)?;
-    data.resize(len as usize, 0);
-    Ok((Chunk::new_data(id, data), actual_len))
-  }
-}
-
-fn calc_len(chunks: &Vec<Chunk>) -> u32 {
-  chunks.iter().fold(0, |acc, x| match &x.content {
-    ChunkContent::Subchunk(v) => {
-      let len = v.len() as u32;
-      acc + len + len % 2 + 8
-    },
-    ChunkContent::List { form_type, subchunks } => {
-      let metadata_len = if form_type.is_some() { 12 } else { 8 }; 
-      acc + metadata_len + calc_len(&subchunks)
-    }
-  })
-}
-
-/// Writes a chunk to a stream.
-/// 
-/// # Examples
-/// 
-/// ```
-/// # use std::error::Error;
-/// #
-/// # fn try_main() -> Result<(), Box<Error>> {
-/// let mut writer: Vec<u8> = Vec::new();
-/// let chunk_id = riff::ChunkId::new("test")?;
-/// let chunk = riff::Chunk::new_riff(chunk_id.clone(), vec![
-///   riff::Chunk::new_data(chunk_id.clone(), vec![])
-/// ]);
-/// riff::write_chunk(&mut writer, &chunk)?;
-/// #   Ok(())
-/// # }
-/// #
-/// # fn main() {
-/// #     try_main().unwrap();
-/// # }
-/// ```
-pub fn write_chunk(writer: &mut Write, chunk: &Chunk) -> io::Result<()> {
-  writer.write(&chunk.id.value)?;
-  match &chunk.content {
-    ChunkContent::Subchunk(v) => {
-      let len = v.len() as u32;
-      writer.write_u32::<LittleEndian>(len)?;
-      writer.write(&v)?;
-      if len % 2 != 0 {
-        writer.write(&[0; 1])?;
-      }
-    },
-    ChunkContent::List { form_type, subchunks } => {
-      let len = calc_len(&subchunks);
-      writer.write_u32::<LittleEndian>(if form_type.is_some() {len + 4 } else { len })?;
-      if let Some(form_type) = form_type {
-        writer.write(&form_type.value)?;
-      }
-      for subchunk in subchunks {
-        write_chunk(writer, subchunk)?;
-      }
+  /// If the chunk has children but is noncompliant, e.g. it has
+  /// no type identifier (like `seqt` chunks), use `iter_no_type` instead.
+  pub fn iter<'a, T>(&self, stream: &'a mut T) -> Iter<'a, T>
+      where T: Seek + Read {
+        Iter {
+      cur: self.pos + 12,
+      end: self.pos + 4 + (self.len as u64),
+      stream: stream
     }
   }
-  Ok(())
+
+  /// Returns an iterator over the chilren of the chunk. Only valid for
+  /// noncompliant chunks that have children but no chunk type identifier
+  /// (like `seqt` chunks).
+  pub fn iter_no_type<'a, T>(&self, stream: &'a mut T) -> Iter<'a, T>
+      where T: Seek + Read {
+        Iter {
+      cur: self.pos + 8,
+      end: self.pos + 4 + (self.len as u64),
+      stream: stream
+    }
+  }
 }
 
 #[cfg(test)]
@@ -363,14 +289,6 @@ mod tests {
 
         assert_eq!(ChunkId::new("123"), Err("Invalid length"));
         assert_eq!(ChunkId::new("12345"), Err("Invalid length"));
-    }
-
-    #[test]
-    fn chunkid_lists() {
-        assert!(ChunkId::new("RIFF").unwrap().has_subchunks());
-        assert!(ChunkId::new("LIST").unwrap().has_subchunks());
-        assert!(ChunkId::new("seqt").unwrap().has_subchunks());
-        assert!(!ChunkId::new("test").unwrap().has_subchunks());
     }
 
     #[test]
