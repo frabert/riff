@@ -11,7 +11,11 @@ Reading chunks:
 
 ````rust
 let mut file = File::open("somefile.wav")?;
-let (chunk, _len) = riff::read_chunk(&mut file)?;
+let chunk = riff::Chunk::read(&mut file, 0)?;
+
+for child in chunk.iter(&mut file) {
+  println!(child.id());
+}
 ````
 
 Writing chunks:
@@ -27,15 +31,26 @@ let str1 = "hey this is a test".as_bytes().to_vec();
 let str2 = "hey this is another test".as_bytes().to_vec();
 let str3 = "final test".as_bytes().to_vec();
 
-let test_1 = Chunk::new_data(test_id.clone(), str1);
-let test_2 = Chunk::new_data(test_id.clone(), str2);
-let test_3 = Chunk::new_data(test_id.clone(), str3);
-
-let tst1 = Chunk::new_list(tst1_id, vec![test_1, test_2]);
-let tst2 = Chunk::new_list(tst2_id, vec![test_3]);
-
-let chunk = Chunk::new_riff(smpl_id, vec![tst1, tst2]);
+let contents = ChunkContents::Children(
+  riff::RIFF_ID,
+  smpl_id,
+  vec![
+    ChunkContents::Children(
+      riff::LIST_ID,
+      tst1_id,
+      vec![
+        ChunkContents::Data(test_id, str1),
+        ChunkContents::Data(test_id, str2)
+      ]),
+    ChunkContents::Children(
+      riff::LIST_ID,
+      tst2_id,
+      vec![
+        ChunkContents::Data(test_id, str3)
+      ]
+    )
+  ]);
 
 let mut file = File::create("somefile.riff")?;
-riff::write_chunk(&mut file, &chunk);
+contents.write(&mut file)?;
 ````
