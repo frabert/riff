@@ -1,6 +1,6 @@
 [package]
 name = "riff"
-version = "1.0.0"
+version = "1.0.1"
 authors = ["Francesco Bertolaccini <francesco@bertolaccini.dev>"]
 description = "This crate provides utilities for reading and writing RIFF formatted files"
 repository = "https://github.com/frabert/riff"
