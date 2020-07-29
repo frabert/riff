@@ -130,7 +130,7 @@ impl ChunkContents {
         writer.write_all(&(total_len as u32).to_le_bytes())?;
         writer.seek(SeekFrom::Start(end_pos))?;
 
-        Ok((12 + total_len + (total_len % 2)).into())
+        Ok((8 + total_len + (total_len % 2)).into())
       }
       &ChunkContents::ChildrenNoType(id, children) => {
         writer.write_all(&id.value)?;
