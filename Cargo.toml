@@ -1,13 +1,23 @@
 [package]
-name = "riff"
-version = "1.0.1"
-authors = ["Francesco Bertolaccini <francesco@bertolaccini.dev>"]
-description = "This crate provides utilities for reading and writing RIFF formatted files"
-repository = "https://github.com/frabert/riff"
+name = "riffu"
+version = "2.0.0"
+authors = ["Francesco Bertolaccini <francesco@bertolaccini.dev>", "Hanif Bin Ariffin <hanif.ariffin.4326@gmail.com>"]
+description = """"
+This crate provides utilities for reading and writing RIFF formatted files.
+A fork of the original library that provides an option to either eagerly or lazily read into the file.
+"""
+repository = "https://github.com/hbina/riff"
 readme = "README.md"
 license = "MIT"
 edition = "2018"
 
 [badges]
-travis-ci = { repository = "frabert/riff" }
-codecov = { repository = "frabert/riff" }
+travis-ci = { repository = "hbina/riffu" }
+codecov = { repository = "hbina/riffu" }
+
+[dev-dependencies]
+criterion = "0.3.3"
+
+[[bench]]
+name = "my_benchmark"
+harness = false
