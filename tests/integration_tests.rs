@@ -19,13 +19,6 @@ static TST2_ID: ChunkId = ChunkId {
     value: [0x74, 0x73, 0x74, 0x32],
 };
 
-fn read_items<T>(iter: &mut T) -> Vec<T::Item>
-where
-    T: Iterator,
-{
-    iter.collect()
-}
-
 #[test]
 fn read_minimal() {
     let mut file = File::open("test_assets/minimal.riff").unwrap();
@@ -35,7 +28,7 @@ fn read_minimal() {
     assert_eq!(chunk.read_type(&mut file).unwrap(), SMPL_ID);
     assert_eq!(chunk.read_type(&mut file).unwrap(), SMPL_ID);
 
-    let items = read_items(&mut chunk.iter(&mut file));
+    let items = chunk.iter(&mut file).collect::<Vec<_>>();
 
     assert_eq!(items.len(), 1);
 
@@ -53,7 +46,7 @@ fn read_minimal2() {
     assert_eq!(chunk.id(), &riff::RIFF_ID);
     assert_eq!(chunk.read_type(&mut file).unwrap(), SMPL_ID);
 
-    let items = read_items(&mut chunk.iter(&mut file));
+    let items = chunk.iter(&mut file).collect::<Vec<_>>();
 
     assert_eq!(items.len(), 2);
 
@@ -78,13 +71,13 @@ fn read_test_1() {
     assert_eq!(smpl.id(), &riff::RIFF_ID);
     assert_eq!(smpl.read_type(&mut file).unwrap(), SMPL_ID);
 
-    let smpl_items = read_items(&mut smpl.iter(&mut file));
+    let smpl_items = smpl.iter(&mut file).collect::<Vec<_>>();
     assert_eq!(smpl_items.len(), 2);
 
     let tst1 = &smpl_items[0];
     assert_eq!(tst1.id(), &riff::LIST_ID);
     assert_eq!(tst1.read_type(&mut file).unwrap(), TST1_ID);
-    let tst1_items = read_items(&mut tst1.iter(&mut file));
+    let tst1_items = tst1.iter(&mut file).collect::<Vec<_>>();
     assert_eq!(tst1_items.len(), 2);
 
     let test_1 = &tst1_items[0];
@@ -99,7 +92,7 @@ fn read_test_1() {
     let tst2 = &smpl_items[1];
     assert_eq!(tst2.id(), &riff::SEQT_ID);
 
-    let tst2_items = read_items(&mut tst2.iter_no_type(&mut file));
+    let tst2_items = tst2.iter_no_type(&mut file).collect::<Vec<_>>();
     assert_eq!(tst2_items.len(), 1);
 
     let test_3 = &tst2_items[0];
@@ -118,13 +111,13 @@ fn read_test_2() {
     assert_eq!(smpl.id(), &riff::RIFF_ID);
     assert_eq!(smpl.read_type(&mut file).unwrap(), SMPL_ID);
 
-    let smpl_items = read_items(&mut smpl.iter(&mut file));
+    let smpl_items = smpl.iter(&mut file).collect::<Vec<_>>();
     assert_eq!(smpl_items.len(), 2);
 
     let tst1 = &smpl_items[0];
     assert_eq!(tst1.id(), &riff::LIST_ID);
     assert_eq!(tst1.read_type(&mut file).unwrap(), TST1_ID);
-    let tst1_items = read_items(&mut tst1.iter(&mut file));
+    let tst1_items = tst1.iter(&mut file).collect::<Vec<_>>();
     assert_eq!(tst1_items.len(), 2);
 
     let test_1 = &tst1_items[0];
@@ -139,7 +132,7 @@ fn read_test_2() {
     let tst2 = &smpl_items[1];
     assert_eq!(tst2.id(), &riff::SEQT_ID);
 
-    let tst2_items = read_items(&mut tst2.iter_no_type(&mut file));
+    let tst2_items = tst2.iter_no_type(&mut file).collect::<Vec<_>>();
     assert_eq!(tst2_items.len(), 1);
 
     let test_3 = &tst2_items[0];
