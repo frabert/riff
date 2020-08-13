@@ -6,11 +6,6 @@
 //! Also check out the Wikipedia page for the RIFF file format [https://en.wikipedia.org/wiki/Resource_Interchange_File_Format]
 //! TODO: I think we should always check for compliance and provides an alternative `unchecked_*` version that removes all the compliance checks.
 
-use std::io::Read;
-use std::io::Seek;
-use std::io::SeekFrom;
-use std::io::Write;
-
 /// A chunk id, also known as FourCC
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct ChunkId {
@@ -19,17 +14,17 @@ pub struct ChunkId {
 }
 
 /// The `RIFF` id
-pub static RIFF_ID: ChunkId = ChunkId {
+pub const RIFF_ID: ChunkId = ChunkId {
     value: [0x52, 0x49, 0x46, 0x46],
 };
 
 /// The `LIST` id
-pub static LIST_ID: ChunkId = ChunkId {
+pub const LIST_ID: ChunkId = ChunkId {
     value: [0x4C, 0x49, 0x53, 0x54],
 };
 
 /// The `seqt` id
-pub static SEQT_ID: ChunkId = ChunkId {
+pub const SEQT_ID: ChunkId = ChunkId {
     value: [0x73, 0x65, 0x71, 0x74],
 };
 
@@ -78,128 +73,59 @@ impl ChunkId {
 }
 
 #[derive(PartialEq, Debug)]
-pub enum ChunkContents {
-    RawData(ChunkId, Vec<u8>),
-    Children(ChunkId, ChunkId, Vec<ChunkContents>),
-    ChildrenNoType(ChunkId, Vec<ChunkContents>),
+pub enum ChunkContents<'a> {
+    RawData(ChunkId, &'a [u8]),
+    Children(ChunkId, ChunkId, Vec<ChunkContents<'a>>),
+    ChildrenNoType(ChunkId, Vec<ChunkContents<'a>>),
 }
 
-impl ChunkContents {
-    pub fn write<T>(&self, writer: &mut T) -> std::io::Result<u64>
-    where
-        T: Seek + Write,
-    {
-        match &self {
-            &ChunkContents::RawData(id, data) => {
-                if data.len() as u64 > u32::MAX as u64 {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "Data too big",
-                    ));
-                }
+impl<'a> From<Chunk> for ChunkContents<'a> {
+    fn from(chunk: Chunk) -> Self {
+        match chunk.id() {
+            RIFF_ID | LIST_ID => {
+                let child_id = chunk.get_child_id();
+                let child_contents: Vec<ChunkContents<'a>> = chunk
+                    .child_iter()
+                    .map(|child| ChunkContents::from(child))
+                    .collect();
 
-                let len = data.len() as u32;
-                writer.write_all(&id.value)?;
-                writer.write_all(&len.to_le_bytes())?;
-                writer.write_all(&data)?;
-                if len % 2 != 0 {
-                    let single_byte: [u8; 1] = [0];
-                    writer.write_all(&single_byte)?;
-                }
-                Ok((8 + len + (len % 2)).into())
+                ChunkContents::Children(chunk.id(), child_id, child_contents)
             }
-            &ChunkContents::Children(id, chunk_type, children) => {
-                writer.write_all(&id.value)?;
-                let len_pos = writer.seek(SeekFrom::Current(0))?;
-                let zeros: [u8; 4] = [0, 0, 0, 0];
-                writer.write_all(&zeros)?;
-                writer.write_all(&chunk_type.value)?;
-                let mut total_len: u64 = 4;
-                for child in children {
-                    total_len = total_len + child.write(writer)?;
-                }
+            SEQT_ID => {
+                let child_contents = chunk
+                    .child_iter_notype()
+                    .map(|child| ChunkContents::from(child))
+                    .collect();
 
-                if total_len > u32::MAX as u64 {
-                    use std::io::{Error, ErrorKind};
-                    return Err(Error::new(ErrorKind::InvalidData, "Data too big"));
-                }
-
-                let end_pos = writer.seek(SeekFrom::Current(0))?;
-                writer.seek(SeekFrom::Start(len_pos))?;
-                writer.write_all(&(total_len as u32).to_le_bytes())?;
-                writer.seek(SeekFrom::Start(end_pos))?;
-
-                Ok((8 + total_len + (total_len % 2)).into())
+                ChunkContents::ChildrenNoType(chunk.id(), child_contents)
             }
-            &ChunkContents::ChildrenNoType(id, children) => {
-                writer.write_all(&id.value)?;
-                let len_pos = writer.seek(SeekFrom::Current(0))?;
-                let zeros: [u8; 4] = [0, 0, 0, 0];
-                writer.write_all(&zeros)?;
-                let mut total_len: u64 = 0;
-                for child in children {
-                    total_len = total_len + child.write(writer)?;
-                }
-
-                if total_len > u32::MAX as u64 {
-                    use std::io::{Error, ErrorKind};
-                    return Err(Error::new(ErrorKind::InvalidData, "Data too big"));
-                }
-
-                let end_pos = writer.seek(SeekFrom::Current(0))?;
-                writer.seek(SeekFrom::Start(len_pos))?;
-                writer.write_all(&(total_len as u32).to_le_bytes())?;
-                writer.seek(SeekFrom::Start(end_pos))?;
-
-                Ok((8 + total_len + (total_len % 2)).into())
-            }
+            _ => ChunkContents::RawData(chunk.id(), unsafe {
+                std::slice::from_raw_parts(chunk.data, chunk.len as usize)
+            }),
         }
     }
 }
 
-/// A chunk, also known as a form
-#[derive(PartialEq, Eq, Debug)]
+/// A chunk, also known as a form.
+/// Note that `Chunk` is an opaque type.
+/// To obtain the actual chunk.data, chunk.convert this into a `ChunkContents`.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Chunk {
-    pos: u64,
-    id: ChunkId,
+    pos: u32,
     len: u32,
-}
-
-/// An iterator over the children of a `Chunk`
-pub struct ChunkIter<'a, T>
-where
-    T: Seek + Read,
-{
-    end: u64,
-    cur: u64,
-    stream: &'a mut T,
-}
-
-impl<'a, T> Iterator for ChunkIter<'a, T>
-where
-    T: Seek + Read,
-{
-    type Item = Chunk;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.cur >= self.end {
-            None
-        } else {
-            if let Ok(chunk) = Chunk::read(&mut self.stream, self.cur) {
-                let len = chunk.len() as u64;
-                self.cur = self.cur + len + 8 + (len % 2);
-                Some(chunk)
-            } else {
-                None
-            }
-        }
-    }
+    data: *const u8,
 }
 
 impl Chunk {
     /// Returns the `ChunkId` of this chunk.
-    pub fn id(&self) -> &ChunkId {
-        &self.id
+    pub fn id(&self) -> ChunkId {
+        let pos = self.pos as usize;
+        let mut buff: [u8; 4] = [0; 4];
+        // buff.copy_from_slice(&self.data[pos..pos + 4]);
+        unsafe {
+            std::ptr::copy(self.data.add(pos), buff.as_mut_ptr(), 4);
+        }
+        ChunkId { value: buff }
     }
 
     /// Returns the number of bytes in this chunk.
@@ -208,8 +134,19 @@ impl Chunk {
     }
 
     /// Returns the offset of this chunk from the start of the stream.
-    pub fn offset(&self) -> u64 {
+    pub fn offset(&self) -> u32 {
         self.pos
+    }
+
+    pub fn from_raw_u8(data: &[u8], pos: u32) -> Chunk {
+        let pos = pos as usize;
+        let mut buff: [u8; 4] = [0; 4];
+        buff.copy_from_slice(&data[pos + 4..pos + 8]);
+        Chunk {
+            pos: pos as u32,
+            len: u32::from_le_bytes(buff),
+            data: data.as_ptr(),
+        }
     }
 
     /// Reads the chunk type of this chunk.
@@ -218,96 +155,111 @@ impl Chunk {
     /// The type of a chunk is contained in its data field.
     /// This function makes no guarantee that the returned `ChunkId` is valid and/or appropriate.
     /// This method is generally only valid for chunk with `RIFF` and `LIST` identifiers.
-    pub fn read_type<R>(&self, stream: &mut R) -> std::io::Result<ChunkId>
-    where
-        R: Read + Seek,
-    {
-        stream.seek(SeekFrom::Start(self.pos + 8))?;
-
-        let mut fourcc: [u8; 4] = [0; 4];
-        stream.read_exact(&mut fourcc)?;
-
-        Ok(ChunkId { value: fourcc })
+    pub fn get_child_id(&self) -> ChunkId {
+        let pos = self.pos as usize;
+        let mut buff: [u8; 4] = [0; 4];
+        unsafe {
+            std::ptr::copy(self.data.add(pos + 8), buff.as_mut_ptr(), 4);
+        }
+        ChunkId { value: buff }
     }
 
     /// Reads a chunk from the specified position in the stream.
-    pub fn read<T>(stream: &mut T, pos: u64) -> std::io::Result<Chunk>
-    where
-        T: Read + Seek,
-    {
-        stream.seek(SeekFrom::Start(pos))?;
-
-        let mut fourcc: [u8; 4] = [0; 4];
-        stream.read_exact(&mut fourcc)?;
-
-        let mut len: [u8; 4] = [0; 4];
-        stream.read_exact(&mut len)?;
-
-        Ok(Chunk {
-            pos,
-            id: ChunkId { value: fourcc },
-            len: u32::from_le_bytes(len),
-        })
-    }
-
-    /// Reads the entirety of the contents of a chunk.
-    pub fn read_contents<T>(&self, stream: &mut T) -> std::io::Result<Vec<u8>>
-    where
-        T: Read + Seek,
-    {
-        stream.seek(SeekFrom::Start(self.pos + 8))?;
-
-        let mut data: Vec<u8> = vec![0; self.len as usize];
-        stream.read_exact(&mut data)?;
-
-        Ok(data)
-    }
-
-    /// Returns an iterator over the children of the chunk.
-    /// This method assumes that the file is `RIFF` compliant.
-    /// That is, it must provide an identifier for the child chunk.
-    /// It is the responsibility of the caller to ensure that the data
-    /// contained are subchunks.
-    ///
-    /// If the parent chunk's identifier is either "RIFF" or "LIST",
-    /// then it is a chunk that contain subchunks.
-    /// The `RIFF` and `LIST` chunk data have the following format:
-    ///     1. 4 bytes of ASCII identifier for this particular `RIFF` or
-    ///        `LIST` chunk.
-    ///     2, Rest of the data.
-    /// Note that this could apply recursively.
-    pub fn iter<'a, T>(&self, stream: &'a mut T) -> ChunkIter<'a, T>
-    where
-        T: Seek + Read,
-    {
-        ChunkIter {
-            // The offset of 12 comes from.
-            // 4 bytes ASCII identifier of parent chunk
-            // 4 bytes LE integer of this schunk
-            // 4 bytes ASCII identifer of child chunk
-            cur: self.pos + 12,
-            end: self.pos + 4 + (self.len as u64),
-            stream: stream,
+    pub fn get_child_chunk(&self) -> Chunk {
+        let pos = self.pos as usize;
+        let mut buff: [u8; 4] = [0; 4];
+        // buff.copy_from_slice(&self.data[pos + 4..pos + 8]);
+        unsafe {
+            std::ptr::copy(self.data.add(pos + 4), buff.as_mut_ptr(), 4);
+        }
+        Chunk {
+            pos: self.pos + self.len,
+            len: u32::from_le_bytes(buff),
+            data: self.data,
         }
     }
 
-    /// Returns an iterator over the chilren of the chunk. Only valid for
-    /// noncompliant chunks that have children but no chunk type identifier
-    /// (like `seqt` chunks).
-    pub fn iter_no_type<'a, T>(&self, stream: &'a mut T) -> ChunkIter<'a, T>
-    where
-        T: Seek + Read,
-    {
+    /// Reads the entirety of the contents of a chunk as `u8` excluding
+    /// the child's ASCII identifier.
+    pub fn get_child_content(&self) -> &[u8] {
+        let pos = self.pos as usize;
+        let len = self.len as usize;
+        //  &self.data[pos + 12..pos + len]
+        unsafe { std::slice::from_raw_parts(self.data.add(pos + 12), len) }
+    }
+
+    /// Reads the entirety of the contents of a chunk as `u8`.
+    pub fn get_child_content_untyped<T>(&self) -> &[u8] {
+        let pos = self.pos as usize;
+        let len = self.len as usize;
+        // &self.data[pos + 8..pos + len]
+        unsafe { std::slice::from_raw_parts(self.data.add(pos + 8), len) }
+    }
+
+    /// Creates an iterator of the childrens.
+    pub fn child_iter(&self) -> ChunkIter {
         ChunkIter {
-            cur: self.pos + 8,
-            end: self.pos + 4 + (self.len as u64),
-            stream: stream,
+            cursor: self.pos + 12,
+            end: self.len,
+            data: self.data,
+        }
+    }
+
+    /// Creates an iterator of the childrens.
+    pub fn child_iter_notype(&self) -> ChunkIter {
+        ChunkIter {
+            cursor: self.pos + 8,
+            end: self.len,
+            data: self.data,
         }
     }
 }
 
-pub  struct Riff {
-    
+#[derive(Debug)]
+pub struct ChunkIter {
+    cursor: u32,
+    end: u32,
+    data: *const u8,
+}
+
+impl Iterator for ChunkIter {
+    type Item = Chunk;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.cursor >= self.end {
+            None
+        } else {
+            let chunk = Chunk::from_raw_u8(
+                unsafe { std::slice::from_raw_parts(self.data, self.end as usize) },
+                self.cursor,
+            );
+            self.cursor = self.cursor + 8 + chunk.len + (chunk.len % 2);
+            Some(chunk)
+        }
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct Riff {
+    // This should be the only instance of the RIFF data in memory.
+    data: Vec<u8>,
+}
+
+#[allow(dead_code)]
+impl Riff {
+    pub fn get_chunk(&self) -> Chunk {
+        Chunk {
+            pos: 0,
+            len: self.data.len() as u32,
+            data: self.data.as_ptr(),
+        }
+    }
+
+    pub fn from_file(path: std::path::PathBuf) -> std::io::Result<Self> {
+        let data = std::fs::read(path)?;
+        Ok(Riff { data })
+    }
 }
 
 #[cfg(test)]

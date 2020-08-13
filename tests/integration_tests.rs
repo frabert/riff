@@ -12,202 +12,25 @@ static SMPL_ID: ChunkId = ChunkId {
 static TEST_ID: ChunkId = ChunkId {
     value: [0x74, 0x65, 0x73, 0x74],
 };
-static TST1_ID: ChunkId = ChunkId {
+static TEST_1_ID: ChunkId = ChunkId {
     value: [0x74, 0x73, 0x74, 0x31],
 };
-static TST2_ID: ChunkId = ChunkId {
+static TEST_2_ID: ChunkId = ChunkId {
     value: [0x74, 0x73, 0x74, 0x32],
 };
 
 #[test]
-fn read_minimal() {
-    let mut file = File::open("test_assets/minimal.riff").unwrap();
-    let chunk = riff::Chunk::read(&mut file, 0).unwrap();
-
-    assert_eq!(chunk.id(), &riff::RIFF_ID);
-    assert_eq!(chunk.read_type(&mut file).unwrap(), SMPL_ID);
-    assert_eq!(chunk.read_type(&mut file).unwrap(), SMPL_ID);
-
-    let items = chunk.iter(&mut file).collect::<Vec<_>>();
-
-    assert_eq!(items.len(), 1);
-
-    let item = &items[0];
-
-    assert_eq!(item.id(), &TEST_ID);
-    assert_eq!(item.read_contents(&mut file).unwrap(), vec![0xFF]);
-}
-
-#[test]
-fn read_minimal2() {
-    let mut file = File::open("test_assets/minimal_2.riff").unwrap();
-    let chunk = riff::Chunk::read(&mut file, 0).unwrap();
-
-    assert_eq!(chunk.id(), &riff::RIFF_ID);
-    assert_eq!(chunk.read_type(&mut file).unwrap(), SMPL_ID);
-
-    let items = chunk.iter(&mut file).collect::<Vec<_>>();
-
-    assert_eq!(items.len(), 2);
-
-    let item1 = &items[0];
-    let item2 = &items[1];
-
-    assert_eq!(item1.id(), &TST1_ID);
-    assert_eq!(item1.read_contents(&mut file).unwrap(), vec![0xFF]);
-
-    assert_eq!(item2.id(), &TST2_ID);
-    assert_eq!(item2.read_contents(&mut file).unwrap(), vec![0xEE]);
-}
-
-#[test]
-fn read_test_1() {
-    let mut file = File::open("test_assets/test.riff").unwrap();
-    let str1 = "hey this is a test".as_bytes().to_vec();
-    let str2 = "hey this is another test".as_bytes().to_vec();
-    let str3 = "final test".as_bytes().to_vec();
-
-    let smpl = Chunk::read(&mut file, 0).unwrap();
-    assert_eq!(smpl.id(), &riff::RIFF_ID);
-    assert_eq!(smpl.read_type(&mut file).unwrap(), SMPL_ID);
-
-    let smpl_items = smpl.iter(&mut file).collect::<Vec<_>>();
-    assert_eq!(smpl_items.len(), 2);
-
-    let tst1 = &smpl_items[0];
-    assert_eq!(tst1.id(), &riff::LIST_ID);
-    assert_eq!(tst1.read_type(&mut file).unwrap(), TST1_ID);
-    let tst1_items = tst1.iter(&mut file).collect::<Vec<_>>();
-    assert_eq!(tst1_items.len(), 2);
-
-    let test_1 = &tst1_items[0];
-    let test_2 = &tst1_items[1];
-
-    assert_eq!(test_1.id(), &TEST_ID);
-    assert_eq!(test_1.read_contents(&mut file).unwrap(), str1);
-
-    assert_eq!(test_2.id(), &TEST_ID);
-    assert_eq!(test_2.read_contents(&mut file).unwrap(), str2);
-
-    let tst2 = &smpl_items[1];
-    assert_eq!(tst2.id(), &riff::SEQT_ID);
-
-    let tst2_items = tst2.iter_no_type(&mut file).collect::<Vec<_>>();
-    assert_eq!(tst2_items.len(), 1);
-
-    let test_3 = &tst2_items[0];
-    assert_eq!(test_3.id(), &TEST_ID);
-    assert_eq!(test_3.read_contents(&mut file).unwrap(), str3);
-}
-
-#[test]
-fn read_test_2() {
-    let mut file = File::open("test_assets/test_2.riff").unwrap();
-    let str1 = "hey this is a test".as_bytes().to_vec();
-    let str2 = "hey this is another test!".as_bytes().to_vec();
-    let str3 = "final test".as_bytes().to_vec();
-
-    let smpl = Chunk::read(&mut file, 0).unwrap();
-    assert_eq!(smpl.id(), &riff::RIFF_ID);
-    assert_eq!(smpl.read_type(&mut file).unwrap(), SMPL_ID);
-
-    let smpl_items = smpl.iter(&mut file).collect::<Vec<_>>();
-    assert_eq!(smpl_items.len(), 2);
-
-    let tst1 = &smpl_items[0];
-    assert_eq!(tst1.id(), &riff::LIST_ID);
-    assert_eq!(tst1.read_type(&mut file).unwrap(), TST1_ID);
-    let tst1_items = tst1.iter(&mut file).collect::<Vec<_>>();
-    assert_eq!(tst1_items.len(), 2);
-
-    let test_1 = &tst1_items[0];
-    let test_2 = &tst1_items[1];
-
-    assert_eq!(test_1.id(), &TEST_ID);
-    assert_eq!(test_1.read_contents(&mut file).unwrap(), str1);
-
-    assert_eq!(test_2.id(), &TEST_ID);
-    assert_eq!(test_2.read_contents(&mut file).unwrap(), str2);
-
-    let tst2 = &smpl_items[1];
-    assert_eq!(tst2.id(), &riff::SEQT_ID);
-
-    let tst2_items = tst2.iter_no_type(&mut file).collect::<Vec<_>>();
-    assert_eq!(tst2_items.len(), 1);
-
-    let test_3 = &tst2_items[0];
-    assert_eq!(test_3.id(), &TEST_ID);
-    assert_eq!(test_3.read_contents(&mut file).unwrap(), str3);
-}
-
-fn read_chunk<'a, T>(chunk: &Chunk, file: &'a mut T) -> ChunkContents
-where
-    T: std::io::Seek + std::io::Read,
-{
-    let id = chunk.id();
-    if id == &riff::RIFF_ID || id == &riff::LIST_ID {
-        let chunk_type = chunk.read_type(file).unwrap();
-        let children_contents = chunk
-            .iter(file)
-            // Because of the unfortunate nature of creating an iterator over a stream.
-            // We have to `collect` it as a `Vec` first before we can process it.
-            .collect::<Vec<_>>()
-            .iter()
-            .map(|child| read_chunk(&child, file))
-            .collect();
-
-        ChunkContents::Children(id.clone(), chunk_type, children_contents)
-    } else if id == &riff::SEQT_ID {
-        let children_contents = chunk
-            .iter_no_type(file)
-            // Because of the unfortunate nature of creating an iterator over a stream.
-            // We have to `collect` it as a `Vec` first before we can process it.
-            .collect::<Vec<_>>()
-            .iter()
-            .map(|child| read_chunk(&child, file))
-            .collect();
-
-        ChunkContents::ChildrenNoType(id.clone(), children_contents)
-    } else {
-        let contents = chunk.read_contents(file).unwrap();
-        ChunkContents::RawData(id.clone(), contents)
-    }
-}
-
-#[test]
-fn write_test_1() {
-    let buf: Vec<u8> = vec![0; 1024];
-    let chunk = {
-        let mut file_read = File::open("test_assets/test.riff").unwrap();
-        let chunk = Chunk::read(&mut file_read, 0).unwrap();
-        read_chunk(&chunk, &mut file_read)
-    };
-    let mut cursor = std::io::Cursor::new(buf);
-    chunk.write(&mut cursor).unwrap();
-
-    let reread_chunk = {
-        let chunk = Chunk::read(&mut cursor, 0).unwrap();
-        read_chunk(&chunk, &mut cursor)
-    };
-
-    assert_eq!(chunk, reread_chunk);
-}
-
-#[test]
-fn write_test_2() {
-    let buf: Vec<u8> = vec![0; 1024];
-    let chunk = {
-        let mut file_read = File::open("test_assets/test_2.riff").unwrap();
-        let chunk = Chunk::read(&mut file_read, 0).unwrap();
-        read_chunk(&chunk, &mut file_read)
-    };
-    let mut cursor = std::io::Cursor::new(buf);
-    chunk.write(&mut cursor).unwrap();
-
-    let reread_chunk = {
-        let chunk = Chunk::read(&mut cursor, 0).unwrap();
-        read_chunk(&chunk, &mut cursor)
-    };
-
-    assert_eq!(chunk, reread_chunk);
+fn read_as_riff() {
+    let file = riff::Riff::from_file(std::path::PathBuf::from("test_assets/minimal.riff")).unwrap();
+    println!("file:{:?}", file);
+    let _ = file
+        .get_chunk()
+        .child_iter()
+        .inspect(|chunk| {
+            println!("chunk:{:?}", chunk);
+            println!("chunk_id:{:?}", chunk.id().as_str());
+        })
+        .map(ChunkContents::from)
+        .inspect(|content| println!("content:{:?}", content))
+        .collect::<Vec<ChunkContents>>();
 }
