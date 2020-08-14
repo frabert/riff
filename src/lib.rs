@@ -9,65 +9,34 @@
 /// A chunk id, also known as FourCC
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct ChunkId {
-    /// The raw bytes of the id
     pub value: [u8; 4],
 }
 
-/// The `RIFF` id
 pub const RIFF_ID: ChunkId = ChunkId {
     value: [0x52, 0x49, 0x46, 0x46],
 };
 
-/// The `LIST` id
 pub const LIST_ID: ChunkId = ChunkId {
     value: [0x4C, 0x49, 0x53, 0x54],
 };
 
-/// The `seqt` id
 pub const SEQT_ID: ChunkId = ChunkId {
     value: [0x73, 0x65, 0x71, 0x74],
 };
 
 impl ChunkId {
-    /// Returns the value of the id as a string.
-    ///
-    /// # Examples
-    /// ```
-    /// assert_eq!(riff::RIFF_ID.as_str(), "RIFF");
-    /// ```
-    ///
-    /// # Panics
-    /// This function panics when the value does not represent a valid UTF-8 string.
     pub fn as_str(&self) -> &str {
         std::str::from_utf8(&self.value).unwrap()
     }
 
-    /// Creates a new ChunkId from a string.
-    ///
-    /// # Examples
-    /// ```
-    /// # use std::error::Error;
-    /// #
-    /// # fn try_main() -> Result<(), (Box<dyn Error>)> {
-    /// let chunk_id = riff::ChunkId::new("RIFF")?;
-    /// #   Ok(())
-    /// # }
-    /// #
-    /// # fn main() {
-    /// #     try_main().unwrap();
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    /// The function fails when the string's length in bytes is not exactly 4.
-    pub fn new(s: &str) -> Result<ChunkId, &str> {
+    pub fn new(s: &str) -> Option<ChunkId> {
         let bytes = s.as_bytes();
         if bytes.len() != 4 {
-            Err("Invalid length")
+            None
         } else {
             let mut a: [u8; 4] = Default::default();
             a.copy_from_slice(&bytes[..]);
-            Ok(ChunkId { value: a })
+            Some(ChunkId { value: a })
         }
     }
 }
@@ -79,13 +48,13 @@ pub enum ChunkContents<'a> {
     ChildrenNoType(ChunkId, Vec<ChunkContents<'a>>),
 }
 
-impl<'a> From<Chunk> for ChunkContents<'a> {
-    fn from(chunk: Chunk) -> Self {
+impl<'a> From<Chunk<'a>> for ChunkContents<'a> {
+    fn from(chunk: Chunk<'a>) -> Self {
         match chunk.id() {
             RIFF_ID | LIST_ID => {
                 let child_id = chunk.get_child_id();
                 let child_contents: Vec<ChunkContents<'a>> = chunk
-                    .child_iter()
+                    .iter_type()
                     .map(|child| ChunkContents::from(child))
                     .collect();
 
@@ -93,47 +62,43 @@ impl<'a> From<Chunk> for ChunkContents<'a> {
             }
             SEQT_ID => {
                 let child_contents = chunk
-                    .child_iter_notype()
+                    .iter_notype()
                     .map(|child| ChunkContents::from(child))
                     .collect();
 
                 ChunkContents::ChildrenNoType(chunk.id(), child_contents)
             }
-            _ => ChunkContents::RawData(chunk.id(), unsafe {
-                std::slice::from_raw_parts(chunk.data, chunk.len as usize)
-            }),
+            _ => {
+                let contents = chunk.get_raw_child_content_untyped();
+                ChunkContents::RawData(chunk.id(), contents)
+            }
         }
     }
 }
 
-/// A chunk, also known as a form.
-/// Note that `Chunk` is an opaque type.
-/// To obtain the actual chunk.data, chunk.convert this into a `ChunkContents`.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Chunk {
+pub struct Chunk<'a> {
     pos: u32,
-    len: u32,
-    data: *const u8,
+    payload_len: u32,
+    data: &'a [u8],
 }
 
-impl Chunk {
-    /// Returns the `ChunkId` of this chunk.
+impl<'a> Chunk<'a> {
     pub fn id(&self) -> ChunkId {
         let pos = self.pos as usize;
         let mut buff: [u8; 4] = [0; 4];
-        // buff.copy_from_slice(&self.data[pos..pos + 4]);
-        unsafe {
-            std::ptr::copy(self.data.add(pos), buff.as_mut_ptr(), 4);
-        }
+        buff.copy_from_slice(&self.data[pos..pos + 4]);
         ChunkId { value: buff }
     }
 
-    /// Returns the number of bytes in this chunk.
     pub fn len(&self) -> u32 {
-        self.len
+        self.payload_len
     }
 
-    /// Returns the offset of this chunk from the start of the stream.
+    pub fn is_empty(&self) -> bool {
+        self.payload_len == 0
+    }
+
     pub fn offset(&self) -> u32 {
         self.pos
     }
@@ -144,96 +109,108 @@ impl Chunk {
         buff.copy_from_slice(&data[pos + 4..pos + 8]);
         Chunk {
             pos: pos as u32,
-            len: u32::from_le_bytes(buff),
-            data: data.as_ptr(),
+            payload_len: u32::from_le_bytes(buff),
+            data: data,
         }
     }
 
-    /// Reads the chunk type of this chunk.
-    ///
-    /// This is not to be confused with the chunk's identifier.
-    /// The type of a chunk is contained in its data field.
-    /// This function makes no guarantee that the returned `ChunkId` is valid and/or appropriate.
-    /// This method is generally only valid for chunk with `RIFF` and `LIST` identifiers.
     pub fn get_child_id(&self) -> ChunkId {
         let pos = self.pos as usize;
         let mut buff: [u8; 4] = [0; 4];
-        unsafe {
-            std::ptr::copy(self.data.add(pos + 8), buff.as_mut_ptr(), 4);
-        }
+        buff.copy_from_slice(&self.data[pos + 8..pos + 12]);
         ChunkId { value: buff }
     }
 
-    /// Reads a chunk from the specified position in the stream.
-    pub fn get_child_chunk(&self) -> Chunk {
-        let pos = self.pos as usize;
-        let mut buff: [u8; 4] = [0; 4];
-        // buff.copy_from_slice(&self.data[pos + 4..pos + 8]);
-        unsafe {
-            std::ptr::copy(self.data.add(pos + 4), buff.as_mut_ptr(), 4);
-        }
-        Chunk {
-            pos: self.pos + self.len,
-            len: u32::from_le_bytes(buff),
-            data: self.data,
-        }
+    pub fn get_child_chunk_typed(&self) -> Chunk<'a> {
+        Chunk::from_raw_u8(self.data, self.pos + 12)
     }
 
-    /// Reads the entirety of the contents of a chunk as `u8` excluding
-    /// the child's ASCII identifier.
-    pub fn get_child_content(&self) -> &[u8] {
-        let pos = self.pos as usize;
-        let len = self.len as usize;
-        //  &self.data[pos + 12..pos + len]
-        unsafe { std::slice::from_raw_parts(self.data.add(pos + 12), len) }
+    pub fn get_child_chunk_untyped(&self) -> Chunk<'a> {
+        Chunk::from_raw_u8(self.data, self.pos + 8)
     }
 
-    /// Reads the entirety of the contents of a chunk as `u8`.
-    pub fn get_child_content_untyped<T>(&self) -> &[u8] {
+    pub fn get_raw_child_content_typed(&self) -> &'a [u8] {
         let pos = self.pos as usize;
-        let len = self.len as usize;
-        // &self.data[pos + 8..pos + len]
-        unsafe { std::slice::from_raw_parts(self.data.add(pos + 8), len) }
+        let payload_len = self.payload_len as usize;
+        &self.data[pos + 12..pos + 12 + payload_len]
     }
 
-    /// Creates an iterator of the childrens.
-    pub fn child_iter(&self) -> ChunkIter {
-        ChunkIter {
+    pub fn get_raw_child_content_untyped(&self) -> &'a [u8] {
+        let pos = self.pos as usize;
+        let payload_len = self.payload_len as usize;
+        &self.data[pos + 8..pos + 8 + payload_len]
+    }
+
+    pub fn iter_type(&self) -> ChunkIterType<'a> {
+        ChunkIterType {
             cursor: self.pos + 12,
-            end: self.len,
+            end: self.data.len() as u32,
             data: self.data,
         }
     }
 
-    /// Creates an iterator of the childrens.
-    pub fn child_iter_notype(&self) -> ChunkIter {
-        ChunkIter {
+    pub fn iter_notype(&self) -> ChunkIterNoType<'a> {
+        ChunkIterNoType {
             cursor: self.pos + 8,
-            end: self.len,
+            end: self.data.len() as u32,
             data: self.data,
         }
     }
 }
 
 #[derive(Debug)]
-pub struct ChunkIter {
+pub struct ChunkIterType<'a> {
     cursor: u32,
     end: u32,
-    data: *const u8,
+    data: &'a [u8],
 }
 
-impl Iterator for ChunkIter {
-    type Item = Chunk;
+impl<'a> Iterator for ChunkIterType<'a> {
+    type Item = Chunk<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.cursor >= self.end {
             None
         } else {
-            let chunk = Chunk::from_raw_u8(
-                unsafe { std::slice::from_raw_parts(self.data, self.end as usize) },
+            let chunk = Chunk::from_raw_u8(self.data, self.cursor);
+            println!(
+                "next_chunk:{:?} self.cursor:{:?} chunk.payload_len:{:?} (chunk.payload_len % 2):{:?}",
+                chunk,
                 self.cursor,
+                chunk.payload_len,
+                (chunk.payload_len % 2)
             );
-            self.cursor = self.cursor + 8 + chunk.len + (chunk.len % 2);
+            self.cursor = self.cursor + 4 + 4 + 4 + chunk.payload_len + (chunk.payload_len % 2);
+            println!("iterator:{:?}", self);
+            Some(chunk)
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ChunkIterNoType<'a> {
+    cursor: u32,
+    end: u32,
+    data: &'a [u8],
+}
+
+impl<'a> Iterator for ChunkIterNoType<'a> {
+    type Item = Chunk<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.cursor >= self.end {
+            None
+        } else {
+            let chunk = Chunk::from_raw_u8(self.data, self.cursor);
+            println!(
+                "next_chunk:{:?} self.cursor:{:?} chunk.payload_len:{:?} (chunk.payload_len % 2):{:?}",
+                chunk,
+                self.cursor,
+                chunk.payload_len,
+                (chunk.payload_len % 2)
+            );
+            self.cursor = self.cursor + 4 + 4 + chunk.payload_len + (chunk.payload_len % 2);
+            println!("iterator:{:?}", self);
             Some(chunk)
         }
     }
@@ -248,12 +225,19 @@ pub struct Riff {
 
 #[allow(dead_code)]
 impl Riff {
+    pub fn len(&self) -> u32 {
+        self.data.len() as u32
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.len() == 0
+    }
+
     pub fn get_chunk(&self) -> Chunk {
-        Chunk {
-            pos: 0,
-            len: self.data.len() as u32,
-            data: self.data.as_ptr(),
-        }
+        self.data.iter().for_each(|x| {
+            println!("{:#b} => {:?}", x, x);
+        });
+        Chunk::from_raw_u8(self.data.as_slice(), 0)
     }
 
     pub fn from_file(path: std::path::PathBuf) -> std::io::Result<Self> {
@@ -279,8 +263,8 @@ mod tests {
             }
         );
 
-        assert_eq!(ChunkId::new("123"), Err("Invalid length"));
-        assert_eq!(ChunkId::new("12345"), Err("Invalid length"));
+        assert_eq!(ChunkId::new("123"), None);
+        assert_eq!(ChunkId::new("12345"), None);
     }
 
     #[test]
