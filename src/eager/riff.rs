@@ -1,4 +1,4 @@
-use crate::error::RiffError;
+use crate::error::{ChunkTooSmall, ChunkTooSmallForChunkType, PayloadLenMismatch, RiffError};
 use crate::{
     constants::{LIST_ID, RIFF_ID, SEQT_ID},
     error::RiffResult,
@@ -43,10 +43,10 @@ impl Riff {
         if data.len() >= 8 {
             Ok(Riff { data })
         } else {
-            Err(RiffError::ChunkTooSmall {
+            Err(RiffError::ChunkTooSmall(ChunkTooSmall {
                 data: Vec::from(data),
                 pos: 0,
-            })
+            }))
         }
     }
 }
@@ -86,10 +86,10 @@ impl<'a> Chunk<'a> {
                 data,
             })
         } else {
-            Err(RiffError::ChunkTooSmall {
+            Err(RiffError::ChunkTooSmall(ChunkTooSmall {
                 data: Vec::from(data),
                 pos,
-            })
+            }))
         }
     }
 
@@ -100,10 +100,12 @@ impl<'a> Chunk<'a> {
             buff.copy_from_slice(&self.data[pos + 8..pos + 12]);
             Ok(ChunkType { value: buff })
         } else {
-            Err(RiffError::ChunkTooSmallForChunkType {
-                data: Vec::from(self.data),
-                pos,
-            })
+            Err(RiffError::ChunkTooSmallForChunkType(
+                ChunkTooSmallForChunkType {
+                    data: Vec::from(self.data),
+                    pos,
+                },
+            ))
         }
     }
 
@@ -117,12 +119,12 @@ impl<'a> Chunk<'a> {
         if self.data.len() >= pos + offset + payload_len {
             Ok(&self.data[pos + offset..pos + offset + payload_len])
         } else {
-            Err(RiffError::PayloadLenMismatch {
+            Err(RiffError::PayloadLenMismatch(PayloadLenMismatch {
                 data: Vec::from(self.data),
                 pos,
                 offset,
                 payload_len,
-            })
+            }))
         }
     }
 

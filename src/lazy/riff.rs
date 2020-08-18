@@ -221,7 +221,7 @@ impl Riff {
         let str = std::str::from_utf8(&buffer)?;
         match str {
             RIFF_ID => Ok(Riff { path }),
-            _ => Err(RiffError::NoneError),
+            _ => Err(RiffError::InvalidRiffHeader),
         }
     }
 }

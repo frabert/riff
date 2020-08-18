@@ -12,25 +12,64 @@ pub enum RiffError {
     ByteLessThan8(usize),
     /// Indicates that the provided payload length does not match the raw data's length.
     /// Since the data may be a list of `Chunk`s, it is more likely that this error is caused when payload's length > raw data's size.
-    PayloadLenMismatch {
-        data: Vec<u8>,
-        pos: usize,
-        offset: usize,
-        payload_len: usize,
-    },
+    PayloadLenMismatch(PayloadLenMismatch),
     /// Indicates that the requested data is too small to be a valid chunk.
     /// Note that this returns the entire data and the starting position where this "chunk" is supposed to reside.
-    ChunkTooSmall {
-        data: Vec<u8>,
-        pos: usize,
-    },
+    ChunkTooSmall(ChunkTooSmall),
     /// Indicates that the `Chunk` is too small to contain a `ChunkType`.I
-    ChunkTooSmallForChunkType {
-        data: Vec<u8>,
-        pos: usize,
-    },
+    ChunkTooSmallForChunkType(ChunkTooSmallForChunkType),
     Utf8Error(std::str::Utf8Error),
-    NoneError,
+    /// Indicates that this is a malformed RIFF file.
+    /// RIFF file requires that the first 4 bytes of the file contains the ASCII letters "RIFF".
+    InvalidRiffHeader,
+    /// Indicates a `None` error caused by unwrapping a `None`.
+    /// TODO: Study the cause for this error further.
+    /// This error is quite vague.
+    NoneError(std::option::NoneError),
+}
+
+#[derive(Debug)]
+pub struct ChunkTooSmallForChunkType {
+    pub(crate) data: Vec<u8>,
+    pub(crate) pos: usize,
+}
+
+impl std::fmt::Display for ChunkTooSmallForChunkType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#?}", self)
+    }
+}
+
+#[derive(Debug)]
+pub struct ChunkTooSmall {
+    pub(crate) data: Vec<u8>,
+    pub(crate) pos: usize,
+}
+
+impl std::fmt::Display for ChunkTooSmall {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#?}", self)
+    }
+}
+
+#[derive(Debug)]
+pub struct PayloadLenMismatch {
+    pub(crate) data: Vec<u8>,
+    pub(crate) pos: usize,
+    pub(crate) offset: usize,
+    pub(crate) payload_len: usize,
+}
+
+impl std::fmt::Display for PayloadLenMismatch {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#?}", self)
+    }
+}
+
+impl std::error::Error for RiffError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self)
+    }
 }
 
 impl std::fmt::Display for RiffError {
@@ -58,8 +97,8 @@ impl From<std::str::Utf8Error> for RiffError {
 /// Converts `std::option::NoneError`.
 impl From<std::option::NoneError> for RiffError {
     /// Performs the conversion.
-    fn from(_: std::option::NoneError) -> Self {
-        RiffError::NoneError
+    fn from(v: std::option::NoneError) -> Self {
+        RiffError::NoneError(v)
     }
 }
 
