@@ -43,10 +43,7 @@ impl Riff {
         if data.len() >= 8 {
             Ok(Riff { data })
         } else {
-            Err(RiffError::ChunkTooSmall(ChunkTooSmall {
-                data: Vec::from(data),
-                pos: 0,
-            }))
+            Err(RiffError::ChunkTooSmall(ChunkTooSmall { data, pos: 0 }))
         }
     }
 }

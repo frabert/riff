@@ -29,7 +29,6 @@ pub struct ChunkType {
 
 impl ChunkType {
     pub fn as_str(&self) -> RiffResult<&str> {
-        // TODO: Handle this error.
         Ok(std::str::from_utf8(&self.data)?)
     }
 }
