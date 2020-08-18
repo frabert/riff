@@ -1,4 +1,7 @@
-use crate::constants::{LIST_ID, RIFF_ID, SEQT_ID};
+use crate::{
+    constants::{LIST_ID, RIFF_ID, SEQT_ID},
+    error::RiffResult,
+};
 
 /// An eager representation of a RIFF file.
 #[allow(dead_code)]
@@ -81,7 +84,7 @@ impl<'a> Chunk<'a> {
         let pos = self.pos as usize;
         let payload_len = self.payload_len as usize;
         let offset = match self.id().as_str() {
-            RIFF_ID | LIST_ID => 12,
+            Ok(RIFF_ID) | Ok(LIST_ID) => 12,
             _ => 8,
         };
         &self.data[pos + offset..pos + offset + payload_len]
@@ -89,7 +92,7 @@ impl<'a> Chunk<'a> {
 
     pub fn iter(&self) -> ChunkIter<'a> {
         match self.id().as_str() {
-            RIFF_ID | LIST_ID => ChunkIter {
+            Ok(RIFF_ID) | Ok(LIST_ID) => ChunkIter {
                 cursor: self.pos + 12,
                 // We have to subtract because RIFF_ID and LIST_ID contain chunk type that consumes 4 bytes.
                 cursor_end: self.pos + 12 + self.payload_len - 4,
@@ -132,8 +135,8 @@ pub struct ChunkType {
 }
 
 impl ChunkType {
-    pub fn as_str(&self) -> &str {
-        std::str::from_utf8(&self.value).unwrap()
+    pub fn as_str(&self) -> RiffResult<&str> {
+        Ok(std::str::from_utf8(&self.value)?)
     }
 }
 
@@ -153,7 +156,7 @@ pub enum ChunkContent<'a> {
 impl<'a> From<Chunk<'a>> for ChunkContent<'a> {
     fn from(chunk: Chunk<'a>) -> Self {
         match chunk.id().as_str() {
-            RIFF_ID | LIST_ID => {
+            Ok(RIFF_ID) | Ok(LIST_ID) => {
                 let chunk_type = chunk.chunk_type();
                 let child_contents = chunk
                     .iter()
@@ -161,7 +164,7 @@ impl<'a> From<Chunk<'a>> for ChunkContent<'a> {
                     .collect();
                 ChunkContent::Children(chunk.id(), chunk_type, child_contents)
             }
-            SEQT_ID => {
+            Ok(SEQT_ID) => {
                 let child_contents = chunk
                     .iter()
                     .map(|child| ChunkContent::from(child))
@@ -182,8 +185,8 @@ pub struct ChunkId {
 }
 
 impl ChunkId {
-    pub fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> RiffResult<&str> {
         // TODO: Propagate this error.
-        std::str::from_utf8(&self.value).unwrap()
+        Ok(std::str::from_utf8(&self.value)?)
     }
 }

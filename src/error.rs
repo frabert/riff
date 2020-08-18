@@ -1,3 +1,5 @@
+use std::fmt::Formatter;
+
 /// The type of errors that this library may emit.
 /// Note that most of this errors are currently unused.
 /// There are many, many ways reading into a RIFF file may fail.
@@ -11,11 +13,39 @@ pub enum RiffError {
     /// Indicates that the provided payload length does not match the raw data's length.
     /// Since the data may be a list of `Chunk`s, it is more likely that this error is caused when payload's length > raw data's size.
     PayloadLenMismatch(usize, u32),
+    Utf8Error(std::str::Utf8Error),
+    NoneError,
 }
 
-/// Any `std::io::Error` will represent `RiffError::Io`
+impl std::fmt::Display for RiffError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#?}", self)
+    }
+}
+
+/// Converts `std::io::Error`.
 impl From<std::io::Error> for RiffError {
+    /// Performs the conversion.
     fn from(v: std::io::Error) -> Self {
         RiffError::Io(v)
     }
 }
+
+/// Converts `std::str::Utf8Error`.
+impl From<std::str::Utf8Error> for RiffError {
+    /// Performs the conversion.
+    fn from(v: std::str::Utf8Error) -> Self {
+        RiffError::Utf8Error(v)
+    }
+}
+
+/// Converts `std::option::NoneError`.
+impl From<std::option::NoneError> for RiffError {
+    /// Performs the conversion.
+    fn from(_: std::option::NoneError) -> Self {
+        RiffError::NoneError
+    }
+}
+
+/// A convenient `Result` type.
+pub type RiffResult<T> = Result<T, RiffError>;
