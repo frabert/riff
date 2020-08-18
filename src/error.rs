@@ -18,6 +18,17 @@ pub enum RiffError {
         offset: usize,
         payload_len: usize,
     },
+    /// Indicates that the requested data is too small to be a valid chunk.
+    /// Note that this returns the entire data and the starting position where this "chunk" is supposed to reside.
+    ChunkTooSmall {
+        data: Vec<u8>,
+        pos: usize,
+    },
+    /// Indicates that the `Chunk` is too small to contain a `ChunkType`.I
+    ChunkTooSmallForChunkType {
+        data: Vec<u8>,
+        pos: usize,
+    },
     Utf8Error(std::str::Utf8Error),
     NoneError,
 }

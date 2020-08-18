@@ -148,11 +148,13 @@ impl Chunk {
                 cursor: self.pos + 12,
                 cursor_end: self.pos + 12 + self.payload_len - 4,
                 path: self.path.clone(),
+                error_occured: false,
             },
             _ => ChunkIter {
                 cursor: self.pos + 8,
                 cursor_end: self.pos + 8 + self.payload_len,
                 path: self.path.clone(),
+                error_occured: false,
             },
         })
     }
@@ -163,13 +165,14 @@ pub struct ChunkIter {
     cursor: u32,
     cursor_end: u32,
     path: PathBuf,
+    error_occured: bool,
 }
 
 impl Iterator for ChunkIter {
     type Item = RiffResult<Chunk>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.cursor >= self.cursor_end {
+        if self.error_occured || self.cursor >= self.cursor_end {
             None
         } else {
             match Chunk::from_path(self.path.clone(), self.cursor) {
@@ -181,7 +184,10 @@ impl Iterator for ChunkIter {
                 // We need to correctly parse chunks to proceed this iterator, but we obviously failed
                 // So we would like to stop...but also give the user that something wrong happened,
                 // and its not just the end of file.
-                Err(_) => None,
+                Err(err) => {
+                    self.error_occured = true;
+                    Some(Err(err))
+                }
             }
         }
     }

@@ -12,9 +12,11 @@ pub struct Riff {
     data: Vec<u8>,
 }
 
-impl<'a> From<&'a Riff> for Chunk<'a> {
-    fn from(value: &'a Riff) -> Self {
-        Chunk::from_raw_u8(&value.data, 0)
+impl<'a> TryFrom<&'a Riff> for Chunk<'a> {
+    type Error = RiffError;
+
+    fn try_from(value: &'a Riff) -> RiffResult<Self> {
+        Ok(Chunk::from_raw_u8(&value.data, 0)?)
     }
 }
 
@@ -32,13 +34,20 @@ impl Riff {
         u32::from_le_bytes(buff)
     }
 
-    pub fn iter(&self) -> ChunkIter {
-        Chunk::from_raw_u8(self.data.as_slice(), 0).iter()
+    pub fn iter(&self) -> RiffResult<ChunkIter> {
+        Ok(Chunk::from_raw_u8(self.data.as_slice(), 0)?.iter())
     }
 
-    pub fn from_file(path: std::path::PathBuf) -> std::io::Result<Self> {
+    pub fn from_file(path: std::path::PathBuf) -> RiffResult<Self> {
         let data = std::fs::read(path)?;
-        Ok(Riff { data })
+        if data.len() >= 8 {
+            Ok(Riff { data })
+        } else {
+            Err(RiffError::ChunkTooSmall {
+                data: Vec::from(data),
+                pos: 0,
+            })
+        }
     }
 }
 
@@ -56,6 +65,8 @@ impl<'a> Chunk<'a> {
     pub fn id(&self) -> ChunkId {
         let pos = self.pos as usize;
         let mut buff: [u8; 4] = [0; 4];
+        // SAFETY: Any creation of `Chunk` must occur through `Chunk::from_raw_u8`.
+        // In there, we should already checked that the `data[pos..].len()` is _at least_ 8 bytes long.
         buff.copy_from_slice(&self.data[pos..pos + 4]);
         ChunkId { value: buff }
     }
@@ -64,22 +75,36 @@ impl<'a> Chunk<'a> {
         self.payload_len
     }
 
-    pub fn from_raw_u8(data: &[u8], pos: u32) -> Chunk {
+    pub fn from_raw_u8(data: &[u8], pos: u32) -> RiffResult<Chunk> {
         let pos = pos as usize;
-        let mut payload_buff: [u8; 4] = [0; 4];
-        payload_buff.copy_from_slice(&data[pos + 4..pos + 8]);
-        Chunk {
-            pos: pos as u32,
-            payload_len: u32::from_le_bytes(payload_buff),
-            data,
+        if data.len() >= pos + 8 {
+            let mut payload_buff: [u8; 4] = [0; 4];
+            payload_buff.copy_from_slice(&data[pos + 4..pos + 8]);
+            Ok(Chunk {
+                pos: pos as u32,
+                payload_len: u32::from_le_bytes(payload_buff),
+                data,
+            })
+        } else {
+            Err(RiffError::ChunkTooSmall {
+                data: Vec::from(data),
+                pos,
+            })
         }
     }
 
-    pub fn chunk_type(&self) -> ChunkType {
+    pub fn chunk_type(&self) -> RiffResult<ChunkType> {
         let pos = self.pos as usize;
-        let mut buff: [u8; 4] = [0; 4];
-        buff.copy_from_slice(&self.data[pos + 8..pos + 12]);
-        ChunkType { value: buff }
+        if self.data.len() >= pos + 12 {
+            let mut buff: [u8; 4] = [0; 4];
+            buff.copy_from_slice(&self.data[pos + 8..pos + 12]);
+            Ok(ChunkType { value: buff })
+        } else {
+            Err(RiffError::ChunkTooSmallForChunkType {
+                data: Vec::from(self.data),
+                pos,
+            })
+        }
     }
 
     pub fn get_raw_child(&self) -> RiffResult<&'a [u8]> {
@@ -108,11 +133,13 @@ impl<'a> Chunk<'a> {
                 // We have to subtract because RIFF_ID and LIST_ID contain chunk type that consumes 4 bytes.
                 cursor_end: self.pos + 12 + self.payload_len - 4,
                 data: self.data,
+                error_occured: false,
             },
             _ => ChunkIter {
                 cursor: self.pos + 8,
                 cursor_end: self.pos + 8 + self.payload_len,
                 data: self.data,
+                error_occured: false,
             },
         }
     }
@@ -124,18 +151,26 @@ pub struct ChunkIter<'a> {
     cursor: u32,
     cursor_end: u32,
     data: &'a [u8],
+    error_occured: bool,
 }
 
 impl<'a> Iterator for ChunkIter<'a> {
-    type Item = Chunk<'a>;
+    type Item = RiffResult<Chunk<'a>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.cursor >= self.cursor_end {
+        if self.error_occured || self.cursor >= self.cursor_end {
             None
         } else {
-            let chunk = Chunk::from_raw_u8(self.data, self.cursor);
-            self.cursor = self.cursor + 8 + chunk.payload_len + (chunk.payload_len % 2);
-            Some(chunk)
+            match Chunk::from_raw_u8(self.data, self.cursor) {
+                Ok(chunk) => {
+                    self.cursor = self.cursor + 8 + chunk.payload_len + (chunk.payload_len % 2);
+                    Some(Ok(chunk))
+                }
+                Err(err) => {
+                    self.error_occured = true;
+                    Some(Err(err))
+                }
+            }
         }
     }
 }
@@ -170,10 +205,10 @@ impl<'a> TryFrom<Chunk<'a>> for ChunkContent<'a> {
     fn try_from(chunk: Chunk<'a>) -> RiffResult<Self> {
         match chunk.id().as_str() {
             Ok(RIFF_ID) | Ok(LIST_ID) => {
-                let chunk_type = chunk.chunk_type();
+                let chunk_type = chunk.chunk_type()?;
                 let child_contents = chunk
                     .iter()
-                    .map(|child| ChunkContent::try_from(child))
+                    .map(|child| ChunkContent::try_from(child?))
                     .collect::<RiffResult<Vec<_>>>()?;
                 Ok(ChunkContent::Children(
                     chunk.id(),
@@ -184,7 +219,7 @@ impl<'a> TryFrom<Chunk<'a>> for ChunkContent<'a> {
             Ok(SEQT_ID) => {
                 let child_contents = chunk
                     .iter()
-                    .map(|child| ChunkContent::try_from(child))
+                    .map(|child| ChunkContent::try_from(child?))
                     .collect::<RiffResult<Vec<_>>>()?;
                 Ok(ChunkContent::ChildrenNoType(chunk.id(), child_contents))
             }
