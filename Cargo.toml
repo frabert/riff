@@ -1,6 +1,6 @@
 [package]
 name = "riffu"
-version = "2.0.0"
+version = "2.1.0"
 authors = ["Francesco Bertolaccini <francesco@bertolaccini.dev>", "Hanif Bin Ariffin <hanif.ariffin.4326@gmail.com>"]
 description = """"
 This crate provides utilities for reading and writing RIFF formatted files.
