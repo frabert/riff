@@ -12,7 +12,12 @@ pub enum RiffError {
     ByteLessThan8(usize),
     /// Indicates that the provided payload length does not match the raw data's length.
     /// Since the data may be a list of `Chunk`s, it is more likely that this error is caused when payload's length > raw data's size.
-    PayloadLenMismatch(usize, u32),
+    PayloadLenMismatch {
+        data: Vec<u8>,
+        pos: usize,
+        offset: usize,
+        payload_len: usize,
+    },
     Utf8Error(std::str::Utf8Error),
     NoneError,
 }

@@ -1,7 +1,9 @@
+use crate::error::RiffError;
 use crate::{
     constants::{LIST_ID, RIFF_ID, SEQT_ID},
     error::RiffResult,
 };
+use std::convert::TryFrom;
 
 /// An eager representation of a RIFF file.
 #[allow(dead_code)]
@@ -80,14 +82,23 @@ impl<'a> Chunk<'a> {
         ChunkType { value: buff }
     }
 
-    pub fn get_raw_child(&self) -> &'a [u8] {
+    pub fn get_raw_child(&self) -> RiffResult<&'a [u8]> {
         let pos = self.pos as usize;
         let payload_len = self.payload_len as usize;
         let offset = match self.id().as_str() {
             Ok(RIFF_ID) | Ok(LIST_ID) => 12,
             _ => 8,
         };
-        &self.data[pos + offset..pos + offset + payload_len]
+        if self.data.len() >= pos + offset + payload_len {
+            Ok(&self.data[pos + offset..pos + offset + payload_len])
+        } else {
+            Err(RiffError::PayloadLenMismatch {
+                data: Vec::from(self.data),
+                pos,
+                offset,
+                payload_len,
+            })
+        }
     }
 
     pub fn iter(&self) -> ChunkIter<'a> {
@@ -153,27 +164,33 @@ pub enum ChunkContent<'a> {
 }
 
 /// Since `Chunk` is an opaque type. The only way to obtain the `Chunk`'s contents is through this trait.
-impl<'a> From<Chunk<'a>> for ChunkContent<'a> {
-    fn from(chunk: Chunk<'a>) -> Self {
+impl<'a> TryFrom<Chunk<'a>> for ChunkContent<'a> {
+    type Error = RiffError;
+
+    fn try_from(chunk: Chunk<'a>) -> RiffResult<Self> {
         match chunk.id().as_str() {
             Ok(RIFF_ID) | Ok(LIST_ID) => {
                 let chunk_type = chunk.chunk_type();
                 let child_contents = chunk
                     .iter()
-                    .map(|child| ChunkContent::from(child))
-                    .collect();
-                ChunkContent::Children(chunk.id(), chunk_type, child_contents)
+                    .map(|child| ChunkContent::try_from(child))
+                    .collect::<RiffResult<Vec<_>>>()?;
+                Ok(ChunkContent::Children(
+                    chunk.id(),
+                    chunk_type,
+                    child_contents,
+                ))
             }
             Ok(SEQT_ID) => {
                 let child_contents = chunk
                     .iter()
-                    .map(|child| ChunkContent::from(child))
-                    .collect();
-                ChunkContent::ChildrenNoType(chunk.id(), child_contents)
+                    .map(|child| ChunkContent::try_from(child))
+                    .collect::<RiffResult<Vec<_>>>()?;
+                Ok(ChunkContent::ChildrenNoType(chunk.id(), child_contents))
             }
             _ => {
-                let contents = chunk.get_raw_child();
-                ChunkContent::RawData(chunk.id(), contents)
+                let contents = chunk.get_raw_child()?;
+                Ok(ChunkContent::RawData(chunk.id(), contents))
             }
         }
     }

@@ -22,12 +22,10 @@ fn test_minimal() -> RiffResult<()> {
         file.iter().fold(0, |acc, _| acc + 1),
         expected_content.len()
     );
-    file.iter()
-        .zip(expected_content)
-        .for_each(|(chunk, expected)| {
-            assert_eq!(chunk.get_raw_child().len(), expected.len());
-            assert_eq!(chunk.get_raw_child(), expected);
-        });
+    for (chunk, expected) in file.iter().zip(expected_content) {
+        assert_eq!(chunk.get_raw_child()?.len(), expected.len());
+        assert_eq!(chunk.get_raw_child()?, expected);
+    }
     assert_eq!(file.iter().skip(1).next(), None);
     Ok(())
 }
@@ -54,8 +52,8 @@ fn test_minimal_2() -> RiffResult<()> {
     );
     for (chunk, (name, data)) in file.iter().zip(expected_content) {
         assert_eq!(chunk.id().as_str()?, name);
-        assert_eq!(chunk.get_raw_child().len(), data.len());
-        assert_eq!(chunk.get_raw_child(), data);
+        assert_eq!(chunk.get_raw_child()?.len(), data.len());
+        assert_eq!(chunk.get_raw_child()?, data);
     }
     assert_eq!(file.iter().skip(2).next(), None);
     Ok(())
@@ -87,12 +85,12 @@ fn test_test() -> RiffResult<()> {
         {
             let test = list_1.iter().next()?;
             assert_eq!(test.id().as_str()?, "test");
-            assert_eq!(test.get_raw_child(), "hey this is a test".as_bytes());
+            assert_eq!(test.get_raw_child()?, "hey this is a test".as_bytes());
         }
         {
             let test = list_1.iter().skip(1).next()?;
             assert_eq!(test.id().as_str()?, "test");
-            assert_eq!(test.get_raw_child(), "hey this is another test".as_bytes());
+            assert_eq!(test.get_raw_child()?, "hey this is another test".as_bytes());
         }
     }
     {
@@ -101,7 +99,7 @@ fn test_test() -> RiffResult<()> {
         assert_eq!(list_1.iter().fold(0, |acc, _| acc + 1), 1);
         assert_eq!(list_1.iter().next()?.id().as_str()?, "test");
         assert_eq!(
-            list_1.iter().next()?.get_raw_child(),
+            list_1.iter().next()?.get_raw_child()?,
             "final test".as_bytes()
         );
     }
@@ -134,12 +132,15 @@ fn test_test_2() -> RiffResult<()> {
         {
             let test = list_1.iter().next()?;
             assert_eq!(test.id().as_str()?, "test");
-            assert_eq!(test.get_raw_child(), "hey this is a test".as_bytes());
+            assert_eq!(test.get_raw_child()?, "hey this is a test".as_bytes());
         }
         {
             let test = list_1.iter().skip(1).next()?;
             assert_eq!(test.id().as_str()?, "test");
-            assert_eq!(test.get_raw_child(), "hey this is another test!".as_bytes());
+            assert_eq!(
+                test.get_raw_child()?,
+                "hey this is another test!".as_bytes()
+            );
         }
     }
     {
@@ -148,7 +149,7 @@ fn test_test_2() -> RiffResult<()> {
         assert_eq!(list_1.iter().fold(0, |acc, _| acc + 1), 1);
         assert_eq!(list_1.iter().next()?.id().as_str()?, "test");
         assert_eq!(
-            list_1.iter().next()?.get_raw_child(),
+            list_1.iter().next()?.get_raw_child()?,
             "final test".as_bytes()
         );
     }

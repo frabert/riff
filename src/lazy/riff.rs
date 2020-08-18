@@ -46,8 +46,8 @@ impl TryFrom<Chunk> for ChunkContents {
 
     fn try_from(chunk: Chunk) -> RiffResult<Self> {
         let chunk_id = chunk.id().clone();
-        match chunk_id.as_str()? {
-            RIFF_ID | LIST_ID => {
+        match chunk_id.as_str() {
+            Ok(RIFF_ID) | Ok(LIST_ID) => {
                 let chunk_type = chunk.chunk_type();
                 let child_contents = chunk
                     .iter()?
@@ -59,7 +59,7 @@ impl TryFrom<Chunk> for ChunkContents {
                     child_contents,
                 ))
             }
-            SEQT_ID => {
+            Ok(SEQT_ID) => {
                 let child_contents = chunk
                     .iter()?
                     .map(|child| ChunkContents::try_from(child?))
@@ -136,15 +136,15 @@ impl Chunk {
     }
 
     fn offset_into_data(&self) -> RiffResult<usize> {
-        Ok(match self.id().as_str()? {
-            RIFF_ID | LIST_ID => 12,
+        Ok(match self.id().as_str() {
+            Ok(RIFF_ID) | Ok(LIST_ID) => 12,
             _ => 8,
         })
     }
 
     pub fn iter(&self) -> RiffResult<ChunkIter> {
-        Ok(match self.id().as_str()? {
-            LIST_ID | RIFF_ID => ChunkIter {
+        Ok(match self.id().as_str() {
+            Ok(LIST_ID) | Ok(RIFF_ID) => ChunkIter {
                 cursor: self.pos + 12,
                 cursor_end: self.pos + 12 + self.payload_len - 4,
                 path: self.path.clone(),
