@@ -25,7 +25,7 @@ impl Riff {
     pub fn id(&self) -> ChunkId {
         let mut buff: [u8; 4] = [0; 4];
         buff.copy_from_slice(&self.data[0..4]);
-        ChunkId { value: buff }
+        ChunkId { data: buff }
     }
 
     pub fn payload_len(&self) -> u32 {
@@ -65,7 +65,7 @@ impl<'a> Chunk<'a> {
         // SAFETY: Any creation of `Chunk` must occur through `Chunk::from_raw_u8`.
         // In there, we should already checked that the `data[pos..].len()` is _at least_ 8 bytes long.
         buff.copy_from_slice(&self.data[pos..pos + 4]);
-        ChunkId { value: buff }
+        ChunkId { data: buff }
     }
 
     pub fn payload_len(&self) -> u32 {
@@ -95,7 +95,7 @@ impl<'a> Chunk<'a> {
         if self.data.len() >= pos + 12 {
             let mut buff: [u8; 4] = [0; 4];
             buff.copy_from_slice(&self.data[pos + 8..pos + 12]);
-            Ok(ChunkType { value: buff })
+            Ok(ChunkType { data: buff })
         } else {
             Err(RiffError::ChunkTooSmallForChunkType(
                 ChunkTooSmallForChunkType {
@@ -132,13 +132,13 @@ impl<'a> Chunk<'a> {
                 // We have to subtract because RIFF_ID and LIST_ID contain chunk type that consumes 4 bytes.
                 cursor_end: self.pos + 12 + self.payload_len - 4,
                 data: self.data,
-                error_occured: false,
+                error_occurred: false,
             },
             _ => ChunkIter {
                 cursor: self.pos + 8,
                 cursor_end: self.pos + 8 + self.payload_len,
                 data: self.data,
-                error_occured: false,
+                error_occurred: false,
             },
         }
     }
@@ -150,14 +150,14 @@ pub struct ChunkIter<'a> {
     cursor: u32,
     cursor_end: u32,
     data: &'a [u8],
-    error_occured: bool,
+    error_occurred: bool,
 }
 
 impl<'a> Iterator for ChunkIter<'a> {
     type Item = RiffResult<Chunk<'a>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.error_occured || self.cursor >= self.cursor_end {
+        if self.error_occurred || self.cursor >= self.cursor_end {
             None
         } else {
             match Chunk::from_raw_u8(self.data, self.cursor) {
@@ -166,7 +166,7 @@ impl<'a> Iterator for ChunkIter<'a> {
                     Some(Ok(chunk))
                 }
                 Err(err) => {
-                    self.error_occured = true;
+                    self.error_occurred = true;
                     Some(Err(err))
                 }
             }
@@ -176,12 +176,16 @@ impl<'a> Iterator for ChunkIter<'a> {
 
 #[derive(Debug)]
 pub struct ChunkType {
-    pub value: [u8; 4],
+    pub data: [u8; 4],
 }
 
 impl ChunkType {
     pub fn as_str(&self) -> RiffResult<&str> {
-        Ok(std::str::from_utf8(&self.value)?)
+        Ok(std::str::from_utf8(&self.data)?)
+    }
+
+    pub fn as_bytes(&self) -> &[u8; 4] {
+        &self.data
     }
 }
 
@@ -232,12 +236,15 @@ impl<'a> TryFrom<Chunk<'a>> for ChunkContent<'a> {
 
 #[derive(Debug)]
 pub struct ChunkId {
-    pub value: [u8; 4],
+    pub data: [u8; 4],
 }
 
 impl ChunkId {
     pub fn as_str(&self) -> RiffResult<&str> {
-        // TODO: Propagate this error.
-        Ok(std::str::from_utf8(&self.value)?)
+        Ok(std::str::from_utf8(&self.data)?)
+    }
+
+    pub fn as_bytes(&self) -> &[u8; 4] {
+        &self.data
     }
 }

@@ -8,8 +8,7 @@ use std::convert::TryFrom;
 
 #[test]
 fn test_minimal() -> RiffResult<()> {
-    let file =
-        riffu::eager::riff::Riff::from_file(std::path::PathBuf::from("test_assets/set_1.riff"))?;
+    let file = riffu::eager::riff::Riff::from_file("test_assets/set_1.riff".into())?;
     assert_eq!(file.payload_len(), 14);
     assert_eq!(
         riffu::eager::riff::Chunk::try_from(&file)?.id().as_str()?,
@@ -40,8 +39,7 @@ fn test_minimal() -> RiffResult<()> {
 
 #[test]
 fn test_minimal_2() -> RiffResult<()> {
-    let file =
-        riffu::eager::riff::Riff::from_file(std::path::PathBuf::from("test_assets/set_2.riff"))?;
+    let file = riffu::eager::riff::Riff::from_file("test_assets/set_2.riff".into())?;
     assert_eq!(file.payload_len(), 24);
     assert_eq!(
         riffu::eager::riff::Chunk::try_from(&file)?.id().as_str()?,
@@ -73,8 +71,7 @@ fn test_minimal_2() -> RiffResult<()> {
 
 #[test]
 fn test_test() -> RiffResult<()> {
-    let file =
-        riffu::eager::riff::Riff::from_file(std::path::PathBuf::from("test_assets/set_3.riff"))?;
+    let file = riffu::eager::riff::Riff::from_file("test_assets/set_3.riff".into())?;
     {
         assert_eq!(file.payload_len(), 100);
         assert_eq!(
@@ -120,8 +117,7 @@ fn test_test() -> RiffResult<()> {
 
 #[test]
 fn test_test_2() -> RiffResult<()> {
-    let file =
-        riffu::eager::riff::Riff::from_file(std::path::PathBuf::from("test_assets/set_4.riff"))?;
+    let file = riffu::eager::riff::Riff::from_file("test_assets/set_4.riff".into())?;
     {
         assert_eq!(file.payload_len(), 102);
         assert_eq!(
@@ -170,11 +166,29 @@ fn test_test_2() -> RiffResult<()> {
 
 #[test]
 fn test_chimes_wav() -> RiffResult<()> {
-    let file =
-        riffu::eager::riff::Riff::from_file(std::path::PathBuf::from("test_assets/Chimes.wav"))?;
+    let file = riffu::eager::riff::Riff::from_file("test_assets/Chimes.wav".into())?;
     assert_eq!("RIFF", file.id().as_str()?);
     assert_eq!(15924, file.payload_len());
     let expected = vec![("fmt ", 16), ("fact", 4), ("data", 15876)];
+    for (chunk, (expected_name, expected_payload)) in file.iter()?.zip(expected.iter()) {
+        let chunk = chunk?;
+        assert_eq!(*expected_name, chunk.id().as_str()?);
+        assert_eq!(*expected_payload, chunk.payload_len());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_canimate_avi() -> RiffResult<()> {
+    let file = riffu::eager::riff::Riff::from_file("test_assets/Canimate.avi".into())?;
+    assert_eq!("RIFF", file.id().as_str()?);
+    assert_eq!(91952, file.payload_len());
+    let expected = vec![
+        ("LIST", 1216),
+        ("JUNK", 2840),
+        ("LIST", 87620),
+        ("idx1", 240),
+    ];
     for (chunk, (expected_name, expected_payload)) in file.iter()?.zip(expected.iter()) {
         let chunk = chunk?;
         assert_eq!(*expected_name, chunk.id().as_str()?);

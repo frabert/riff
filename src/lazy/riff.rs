@@ -16,8 +16,11 @@ pub struct ChunkId {
 
 impl ChunkId {
     pub fn as_str(&self) -> Result<&str, RiffError> {
-        // TODO: Handle this error.
         Ok(std::str::from_utf8(&self.data)?)
+    }
+
+    pub fn as_bytes(&self) -> &[u8; 4] {
+        &self.data
     }
 }
 
@@ -30,6 +33,10 @@ pub struct ChunkType {
 impl ChunkType {
     pub fn as_str(&self) -> RiffResult<&str> {
         Ok(std::str::from_utf8(&self.data)?)
+    }
+
+    pub fn as_bytes(&self) -> &[u8; 4] {
+        &self.data
     }
 }
 
@@ -147,13 +154,13 @@ impl Chunk {
                 cursor: self.pos + 12,
                 cursor_end: self.pos + 12 + self.payload_len - 4,
                 path: self.path.clone(),
-                error_occured: false,
+                error_occurred: false,
             },
             _ => ChunkIter {
                 cursor: self.pos + 8,
                 cursor_end: self.pos + 8 + self.payload_len,
                 path: self.path.clone(),
-                error_occured: false,
+                error_occurred: false,
             },
         })
     }
@@ -164,14 +171,14 @@ pub struct ChunkIter {
     cursor: u32,
     cursor_end: u32,
     path: PathBuf,
-    error_occured: bool,
+    error_occurred: bool,
 }
 
 impl Iterator for ChunkIter {
     type Item = RiffResult<Chunk>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.error_occured || self.cursor >= self.cursor_end {
+        if self.error_occurred || self.cursor >= self.cursor_end {
             None
         } else {
             match Chunk::from_path(self.path.clone(), self.cursor) {
@@ -184,7 +191,7 @@ impl Iterator for ChunkIter {
                 // So we would like to stop...but also give the user that something wrong happened,
                 // and its not just the end of file.
                 Err(err) => {
-                    self.error_occured = true;
+                    self.error_occurred = true;
                     Some(Err(err))
                 }
             }

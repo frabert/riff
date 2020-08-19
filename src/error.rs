@@ -20,8 +20,6 @@ pub enum RiffError {
     /// RIFF file requires that the first 4 bytes of the file contains the ASCII letters "RIFF".
     InvalidRiffHeader,
     /// Indicates a `None` error caused by unwrapping a `None`.
-    /// TODO: Study the cause for this error further.
-    /// This error is quite vague.
     NoneError(std::option::NoneError),
 }
 
