@@ -8,7 +8,7 @@ use riffu::{
 use std::convert::TryFrom;
 
 #[test]
-fn test_minimal() -> RiffResult<()> {
+fn test_set_1() -> RiffResult<()> {
     let file = RiffDisk::from_file("test_assets/set_1.riff")?;
     let chunk_root = ChunkDisk::try_from(file)?;
     assert_eq!(chunk_root.payload_len(), 14);
@@ -29,7 +29,7 @@ fn test_minimal() -> RiffResult<()> {
 }
 
 #[test]
-fn test_minimal_2() -> RiffResult<()> {
+fn test_set_2() -> RiffResult<()> {
     let file = RiffDisk::from_file("test_assets/set_2.riff")?;
     let chunk_root = ChunkDisk::try_from(file)?;
     assert_eq!(chunk_root.payload_len(), 24);
@@ -50,7 +50,7 @@ fn test_minimal_2() -> RiffResult<()> {
 }
 
 #[test]
-fn test_test() -> RiffResult<()> {
+fn test_set_3() -> RiffResult<()> {
     let file = RiffDisk::from_file("test_assets/set_3.riff")?;
     let chunk_root = ChunkDisk::try_from(file)?;
     {
@@ -89,7 +89,7 @@ fn test_test() -> RiffResult<()> {
 }
 
 #[test]
-fn test_test_2() -> RiffResult<()> {
+fn test_set_4() -> RiffResult<()> {
     let file = RiffDisk::from_file("test_assets/set_4.riff")?;
     let chunk_root = ChunkDisk::try_from(file)?;
     {

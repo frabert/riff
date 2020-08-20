@@ -8,17 +8,17 @@ use crate::FourCC;
 /// 2. Should we separate Type and NoType? We currently represent these types at the most raw level (literally as `Vec<u8>`) which is quite hard to deal with.
 #[derive(Debug)]
 pub struct ChunkBuilder {
-    chunk_id: FourCC,
-    payload_len: u32,
-    chunk_type: Option<FourCC>,
-    data: ChunkData,
+    pub chunk_id: FourCC,
+    pub payload_len: u32,
+    pub chunk_type: Option<FourCC>,
+    pub data: ChunkData,
 }
 
 impl ChunkBuilder {
     pub fn new_notype(id: FourCC, data: ChunkData) -> Self {
         ChunkBuilder {
             chunk_id: id,
-            payload_len: ChunkBuilder::calculate_payload(&data),
+            payload_len: ChunkBuilder::calculate_payload(&data, 0),
             chunk_type: None,
             data: ChunkBuilder::fit_data(data),
         }
@@ -27,14 +27,14 @@ impl ChunkBuilder {
     pub fn new_type(id: FourCC, chunk_type: FourCC, data: ChunkData) -> Self {
         ChunkBuilder {
             chunk_id: id,
-            payload_len: ChunkBuilder::calculate_payload(&data),
+            payload_len: ChunkBuilder::calculate_payload(&data, 4),
             chunk_type: Some(chunk_type),
             data: ChunkBuilder::fit_data(data),
         }
     }
 
-    fn calculate_payload(data: &ChunkData) -> u32 {
-        match &data {
+    fn calculate_payload(data: &ChunkData, offset: u32) -> u32 {
+        let payload_len = match &data {
             ChunkData::ChunkData(data) => data
                 .iter()
                 .map(|x| {
@@ -46,7 +46,8 @@ impl ChunkBuilder {
                 })
                 .sum(),
             ChunkData::RawData(data) => data.len() as u32,
-        }
+        };
+        payload_len + offset
     }
 
     fn fit_data(data: ChunkData) -> ChunkData {
@@ -82,9 +83,9 @@ impl ChunkBuilder {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct RiffBuilder {
-    payload_len: u32,
-    chunk_type: FourCC,
-    data: Vec<ChunkBuilder>,
+    pub payload_len: u32,
+    pub chunk_type: FourCC,
+    pub data: Vec<ChunkBuilder>,
 }
 
 impl RiffBuilder {
@@ -108,14 +109,16 @@ impl RiffBuilder {
     }
 
     pub fn add_chunk(mut self, chunk: ChunkBuilder) -> Self {
-        self.payload_len += chunk.payload_len + 8;
+        self.payload_len += 8;
         if chunk.chunk_type.is_some() {
             self.payload_len += 4;
         }
-        if let ChunkData::RawData(ref vec) = chunk.data {
-            // TODO: I am quite confident this can be abused somehow...
-            if vec.len() as u32 - chunk.payload_len == 1 {
-                self.payload_len += 1;
+        match chunk.data {
+            ChunkData::RawData(ref raw) => {
+                self.payload_len += raw.len() as u32;
+            }
+            ChunkData::ChunkData(ref vec) => {
+                self.payload_len += vec.iter().map(|x| x.payload_len + 8).sum::<u32>()
             }
         }
         self.data.push(chunk);
