@@ -10,25 +10,25 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub enum ChunkContents {
+pub enum ChunkDiskContent {
     RawData(FourCC, Vec<u8>),
-    Children(FourCC, FourCC, Vec<ChunkContents>),
-    ChildrenNoType(FourCC, Vec<ChunkContents>),
+    Children(FourCC, FourCC, Vec<ChunkDiskContent>),
+    ChildrenNoType(FourCC, Vec<ChunkDiskContent>),
 }
 
-impl TryFrom<Chunk> for ChunkContents {
+impl TryFrom<ChunkDisk> for ChunkDiskContent {
     type Error = RiffError;
 
-    fn try_from(chunk: Chunk) -> RiffResult<Self> {
+    fn try_from(chunk: ChunkDisk) -> RiffResult<Self> {
         let chunk_id = chunk.id().clone();
         match chunk_id.as_str() {
             Ok(RIFF_ID) | Ok(LIST_ID) => {
                 let chunk_type = chunk.chunk_type();
                 let child_contents = chunk
                     .iter()?
-                    .map(|child| ChunkContents::try_from(child?))
+                    .map(|child| ChunkDiskContent::try_from(child?))
                     .collect::<Result<Vec<_>, _>>()?;
-                Ok(ChunkContents::Children(
+                Ok(ChunkDiskContent::Children(
                     chunk_id,
                     chunk_type.clone()?,
                     child_contents,
@@ -37,20 +37,20 @@ impl TryFrom<Chunk> for ChunkContents {
             Ok(SEQT_ID) => {
                 let child_contents = chunk
                     .iter()?
-                    .map(|child| ChunkContents::try_from(child?))
+                    .map(|child| ChunkDiskContent::try_from(child?))
                     .collect::<Result<Vec<_>, _>>()?;
-                Ok(ChunkContents::ChildrenNoType(chunk_id, child_contents))
+                Ok(ChunkDiskContent::ChildrenNoType(chunk_id, child_contents))
             }
             _ => {
                 let contents = chunk.get_raw_child()?;
-                Ok(ChunkContents::RawData(chunk_id.clone(), contents))
+                Ok(ChunkDiskContent::RawData(chunk_id.clone(), contents))
             }
         }
     }
 }
 
 #[derive(Debug)]
-pub struct Chunk {
+pub struct ChunkDisk {
     id: FourCC,
     chunk_type: Option<FourCC>,
     pos: u32,
@@ -58,7 +58,7 @@ pub struct Chunk {
     path: PathBuf,
 }
 
-impl Chunk {
+impl ChunkDisk {
     pub fn id(&self) -> &FourCC {
         &self.id
     }
@@ -71,16 +71,16 @@ impl Chunk {
         &self.chunk_type
     }
 
-    fn from_path(path: PathBuf, pos: u32) -> RiffResult<Chunk> {
+    fn from_path(path: PathBuf, pos: u32) -> RiffResult<ChunkDisk> {
         let pos = pos as u64;
         let mut inner_reader = std::fs::File::open(&path)?;
-        let id_buff = Chunk::read_4_bytes(&mut inner_reader, pos)?;
-        let payload_len_buff = Chunk::read_4_bytes(&mut inner_reader, pos + 4)?;
-        let chunk_type = match Chunk::read_4_bytes(&mut inner_reader, pos + 8) {
+        let id_buff = ChunkDisk::read_4_bytes(&mut inner_reader, pos)?;
+        let payload_len_buff = ChunkDisk::read_4_bytes(&mut inner_reader, pos + 4)?;
+        let chunk_type = match ChunkDisk::read_4_bytes(&mut inner_reader, pos + 8) {
             Ok(result) => Some(FourCC { data: result }),
             Err(_) => None,
         };
-        Ok(Chunk {
+        Ok(ChunkDisk {
             id: FourCC { data: id_buff },
             chunk_type,
             pos: pos as u32,
@@ -117,15 +117,15 @@ impl Chunk {
         })
     }
 
-    pub fn iter(&self) -> RiffResult<ChunkIter> {
+    pub fn iter(&self) -> RiffResult<ChunkDiskIter> {
         Ok(match self.id().as_str() {
-            Ok(LIST_ID) | Ok(RIFF_ID) => ChunkIter {
+            Ok(LIST_ID) | Ok(RIFF_ID) => ChunkDiskIter {
                 cursor: self.pos + 12,
                 cursor_end: self.pos + 12 + self.payload_len - 4,
                 path: self.path.clone(),
                 error_occurred: false,
             },
-            _ => ChunkIter {
+            _ => ChunkDiskIter {
                 cursor: self.pos + 8,
                 cursor_end: self.pos + 8 + self.payload_len,
                 path: self.path.clone(),
@@ -136,21 +136,21 @@ impl Chunk {
 }
 
 #[derive(Debug)]
-pub struct ChunkIter {
+pub struct ChunkDiskIter {
     cursor: u32,
     cursor_end: u32,
     path: PathBuf,
     error_occurred: bool,
 }
 
-impl Iterator for ChunkIter {
-    type Item = RiffResult<Chunk>;
+impl Iterator for ChunkDiskIter {
+    type Item = RiffResult<ChunkDisk>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.error_occurred || self.cursor >= self.cursor_end {
             None
         } else {
-            match Chunk::from_path(self.path.clone(), self.cursor) {
+            match ChunkDisk::from_path(self.path.clone(), self.cursor) {
                 Ok(chunk) => {
                     self.cursor = self.cursor + 8 + chunk.payload_len + (chunk.payload_len % 2);
                     Some(Ok(chunk))
@@ -170,21 +170,21 @@ impl Iterator for ChunkIter {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub struct Riff {
+pub struct RiffDisk {
     path: PathBuf,
 }
 
-impl TryFrom<Riff> for Chunk {
+impl TryFrom<RiffDisk> for ChunkDisk {
     type Error = RiffError;
 
-    fn try_from(value: Riff) -> Result<Self, Self::Error> {
-        Chunk::from_path(value.path, 0)
+    fn try_from(value: RiffDisk) -> Result<Self, Self::Error> {
+        ChunkDisk::from_path(value.path, 0)
     }
 }
 
 #[allow(dead_code)]
-impl Riff {
-    pub fn from_path<T>(path: T) -> RiffResult<Self>
+impl RiffDisk {
+    pub fn from_file<T>(path: T) -> RiffResult<Self>
     where
         T: Into<PathBuf>,
     {
@@ -195,7 +195,7 @@ impl Riff {
         reader.read_exact(&mut buffer)?;
         let str = std::str::from_utf8(&buffer)?;
         match str {
-            RIFF_ID => Ok(Riff { path }),
+            RIFF_ID => Ok(RiffDisk { path }),
             _ => Err(RiffError::InvalidRiffHeader),
         }
     }

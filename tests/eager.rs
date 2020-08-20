@@ -2,16 +2,18 @@
 
 extern crate riffu;
 
-use riffu::eager::riff::{Chunk, ChunkIter, Riff};
-use riffu::error::RiffResult;
+use riffu::{
+    eager::riff::{ChunkRam, ChunkRamIter, RiffRam},
+    error::RiffResult,
+};
 use std::convert::TryFrom;
 
 #[test]
 fn test_minimal() -> RiffResult<()> {
-    let file = riffu::eager::riff::Riff::from_file("test_assets/set_1.riff".into())?;
+    let file = RiffRam::from_file("test_assets/set_1.riff")?;
     assert_eq!(file.payload_len(), 14);
-    assert_eq!(Chunk::try_from(&file)?.id().as_str()?, "RIFF");
-    assert_eq!(Chunk::try_from(&file)?.chunk_type()?.as_str()?, "smpl");
+    assert_eq!(ChunkRam::try_from(&file)?.id().as_str()?, "RIFF");
+    assert_eq!(ChunkRam::try_from(&file)?.chunk_type()?.as_str()?, "smpl");
     let expected_content = vec![vec![255]];
     assert_eq!(
         file.iter()?.fold(0, |acc, _| acc + 1),
@@ -22,7 +24,10 @@ fn test_minimal() -> RiffResult<()> {
         assert_eq!(chunk.get_raw_child()?.len(), expected.len());
         assert_eq!(chunk.get_raw_child()?, expected);
     }
-    match (file.iter()?.skip(1).next(), None::<RiffResult<ChunkIter>>) {
+    match (
+        file.iter()?.skip(1).next(),
+        None::<RiffResult<ChunkRamIter>>,
+    ) {
         (None, None) => assert!(true),
         _ => assert!(false),
     }
@@ -31,10 +36,10 @@ fn test_minimal() -> RiffResult<()> {
 
 #[test]
 fn test_minimal_2() -> RiffResult<()> {
-    let file = Riff::from_file("test_assets/set_2.riff".into())?;
+    let file = RiffRam::from_file("test_assets/set_2.riff")?;
     assert_eq!(file.payload_len(), 24);
-    assert_eq!(Chunk::try_from(&file)?.id().as_str()?, "RIFF");
-    assert_eq!(Chunk::try_from(&file)?.chunk_type()?.as_str()?, "smpl");
+    assert_eq!(ChunkRam::try_from(&file)?.id().as_str()?, "RIFF");
+    assert_eq!(ChunkRam::try_from(&file)?.chunk_type()?.as_str()?, "smpl");
     let expected_content = vec![("tst1", vec![255]), ("tst2", vec![238])];
     assert_eq!(
         file.iter()?.fold(0, |acc, _| acc + 1),
@@ -46,7 +51,10 @@ fn test_minimal_2() -> RiffResult<()> {
         assert_eq!(chunk.get_raw_child()?.len(), data.len());
         assert_eq!(chunk.get_raw_child()?, data);
     }
-    match (file.iter()?.skip(2).next(), None::<RiffResult<ChunkIter>>) {
+    match (
+        file.iter()?.skip(2).next(),
+        None::<RiffResult<ChunkRamIter>>,
+    ) {
         (None, None) => assert!(true),
         _ => assert!(false),
     }
@@ -55,14 +63,14 @@ fn test_minimal_2() -> RiffResult<()> {
 
 #[test]
 fn test_test() -> RiffResult<()> {
-    let file = Riff::from_file("test_assets/set_3.riff".into())?;
+    let file = RiffRam::from_file("test_assets/set_3.riff")?;
     {
         assert_eq!(file.payload_len(), 100);
         assert_eq!(
-            Chunk::try_from(&file)?.id().as_str()?,
+            ChunkRam::try_from(&file)?.id().as_str()?,
             riffu::constants::RIFF_ID
         );
-        assert_eq!(Chunk::try_from(&file)?.chunk_type()?.as_str()?, "smpl");
+        assert_eq!(ChunkRam::try_from(&file)?.chunk_type()?.as_str()?, "smpl");
         assert_eq!(file.iter()?.fold(0, |acc, _| acc + 1), 2);
     }
     {
@@ -96,14 +104,14 @@ fn test_test() -> RiffResult<()> {
 
 #[test]
 fn test_test_2() -> RiffResult<()> {
-    let file = Riff::from_file("test_assets/set_4.riff".into())?;
+    let file = RiffRam::from_file("test_assets/set_4.riff")?;
     {
         assert_eq!(file.payload_len(), 102);
         assert_eq!(
-            Chunk::try_from(&file)?.id().as_str()?,
+            ChunkRam::try_from(&file)?.id().as_str()?,
             riffu::constants::RIFF_ID
         );
-        assert_eq!(Chunk::try_from(&file)?.chunk_type()?.as_str()?, "smpl");
+        assert_eq!(ChunkRam::try_from(&file)?.chunk_type()?.as_str()?, "smpl");
         assert_eq!(file.iter()?.fold(0, |acc, _| acc + 1), 2);
     }
     {
@@ -140,7 +148,7 @@ fn test_test_2() -> RiffResult<()> {
 
 #[test]
 fn test_chimes_wav() -> RiffResult<()> {
-    let file = Riff::from_file("test_assets/Chimes.wav".into())?;
+    let file = RiffRam::from_file("test_assets/Chimes.wav")?;
     assert_eq!("RIFF", file.id().as_str()?);
     assert_eq!(15924, file.payload_len());
     let expected = vec![("fmt ", 16), ("fact", 4), ("data", 15876)];
@@ -154,7 +162,7 @@ fn test_chimes_wav() -> RiffResult<()> {
 
 #[test]
 fn test_canimate_avi() -> RiffResult<()> {
-    let file = Riff::from_file("test_assets/Canimate.avi".into())?;
+    let file = RiffRam::from_file("test_assets/Canimate.avi")?;
     assert_eq!("RIFF", file.id().as_str()?);
     assert_eq!(91952, file.payload_len());
     let expected = vec![

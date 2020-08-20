@@ -1,18 +1,18 @@
+extern crate riffu;
+
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::convert::TryFrom;
 
 use riffu::{
     constants::{LIST_ID, RIFF_ID},
     error::RiffResult,
-    lazy::riff::{Chunk, Riff},
+    lazy::riff::{ChunkDisk, RiffDisk},
 };
-
-extern crate riffu;
 
 fn parse_file(_: ()) -> RiffResult<()> {
     {
-        let file = Riff::from_path("test_assets/set_4.riff")?;
-        let chunk_root = Chunk::try_from(file)?;
+        let file = RiffDisk::from_file("test_assets/set_4.riff")?;
+        let chunk_root = ChunkDisk::try_from(file)?;
         {
             assert_eq!(chunk_root.payload_len(), 102);
             assert_eq!(chunk_root.id().as_str()?, RIFF_ID);
@@ -50,8 +50,8 @@ fn parse_file(_: ()) -> RiffResult<()> {
         }
     }
     {
-        let file = Riff::from_path("test_assets/set_3.riff")?;
-        let chunk_root = Chunk::try_from(file)?;
+        let file = RiffDisk::from_file("test_assets/set_3.riff")?;
+        let chunk_root = ChunkDisk::try_from(file)?;
         {
             assert_eq!(chunk_root.payload_len(), 100);
             assert_eq!(chunk_root.id().as_str()?, RIFF_ID);
@@ -86,8 +86,8 @@ fn parse_file(_: ()) -> RiffResult<()> {
         }
     }
     {
-        let file = Riff::from_path("test_assets/set_2.riff")?;
-        let chunk_root = Chunk::try_from(file)?;
+        let file = RiffDisk::from_file("test_assets/set_2.riff")?;
+        let chunk_root = ChunkDisk::try_from(file)?;
         assert_eq!(chunk_root.payload_len(), 24);
         assert_eq!(chunk_root.id().as_str()?, "RIFF");
         assert_eq!(chunk_root.chunk_type().as_ref()?.as_str()?, "smpl");
@@ -104,8 +104,8 @@ fn parse_file(_: ()) -> RiffResult<()> {
         }
     }
     {
-        let file = Riff::from_path("test_assets/set_1.riff")?;
-        let chunk_root = Chunk::try_from(file)?;
+        let file = RiffDisk::from_file("test_assets/set_1.riff")?;
+        let chunk_root = ChunkDisk::try_from(file)?;
         assert_eq!(chunk_root.payload_len(), 14);
         assert_eq!(chunk_root.id().as_str()?, "RIFF");
         assert_eq!(chunk_root.chunk_type().as_ref()?.as_str()?, "smpl");

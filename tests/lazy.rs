@@ -3,34 +3,35 @@ extern crate riffu;
 use riffu::{
     constants::{LIST_ID, RIFF_ID},
     error::RiffResult,
-    lazy::riff::{Chunk, Riff},
+    lazy::riff::{ChunkDisk, RiffDisk},
 };
 use std::convert::TryFrom;
 
 #[test]
 fn test_minimal() -> RiffResult<()> {
-    let file = Riff::from_path("test_assets/set_1.riff")?;
-    let chunk_root = Chunk::try_from(file)?;
+    let file = RiffDisk::from_file("test_assets/set_1.riff")?;
+    let chunk_root = ChunkDisk::try_from(file)?;
     assert_eq!(chunk_root.payload_len(), 14);
     assert_eq!(chunk_root.id().as_str()?, "RIFF");
     assert_eq!(chunk_root.chunk_type().as_ref()?.as_str()?, "smpl");
-    let expected_content = vec![vec![255]];
+    let expected_content = vec![("test", vec![255])];
     assert_eq!(
         chunk_root.iter()?.fold(0, |acc, _| acc + 1),
         expected_content.len()
     );
-    for (chunk, expected) in chunk_root.iter()?.zip(expected_content) {
+    for (chunk, (expected_name, expected_data)) in chunk_root.iter()?.zip(expected_content) {
         let chunk = chunk?;
-        assert_eq!(chunk.get_raw_child()?.len(), expected.len());
-        assert_eq!(chunk.get_raw_child()?, expected);
+        assert_eq!("test", expected_name);
+        assert_eq!(chunk.get_raw_child()?.len(), expected_data.len());
+        assert_eq!(chunk.get_raw_child()?, expected_data);
     }
     Ok(())
 }
 
 #[test]
 fn test_minimal_2() -> RiffResult<()> {
-    let file = Riff::from_path("test_assets/set_2.riff")?;
-    let chunk_root = Chunk::try_from(file)?;
+    let file = RiffDisk::from_file("test_assets/set_2.riff")?;
+    let chunk_root = ChunkDisk::try_from(file)?;
     assert_eq!(chunk_root.payload_len(), 24);
     assert_eq!(chunk_root.id().as_str()?, "RIFF");
     assert_eq!(chunk_root.chunk_type().as_ref()?.as_str()?, "smpl");
@@ -50,8 +51,8 @@ fn test_minimal_2() -> RiffResult<()> {
 
 #[test]
 fn test_test() -> RiffResult<()> {
-    let file = Riff::from_path("test_assets/set_3.riff")?;
-    let chunk_root = Chunk::try_from(file)?;
+    let file = RiffDisk::from_file("test_assets/set_3.riff")?;
+    let chunk_root = ChunkDisk::try_from(file)?;
     {
         assert_eq!(chunk_root.payload_len(), 100);
         assert_eq!(chunk_root.id().as_str()?, riffu::constants::RIFF_ID);
@@ -89,8 +90,8 @@ fn test_test() -> RiffResult<()> {
 
 #[test]
 fn test_test_2() -> RiffResult<()> {
-    let file = Riff::from_path("test_assets/set_4.riff")?;
-    let chunk_root = Chunk::try_from(file)?;
+    let file = RiffDisk::from_file("test_assets/set_4.riff")?;
+    let chunk_root = ChunkDisk::try_from(file)?;
     {
         assert_eq!(chunk_root.payload_len(), 102);
         assert_eq!(chunk_root.id().as_str()?, RIFF_ID);
