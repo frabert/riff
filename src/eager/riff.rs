@@ -2,6 +2,7 @@ use crate::error::{ChunkTooSmall, ChunkTooSmallForChunkType, PayloadLenMismatch,
 use crate::{
     constants::{LIST_ID, RIFF_ID, SEQT_ID},
     error::RiffResult,
+    ChunkId, ChunkType,
 };
 use std::convert::TryFrom;
 
@@ -174,21 +175,6 @@ impl<'a> Iterator for ChunkIter<'a> {
     }
 }
 
-#[derive(Debug)]
-pub struct ChunkType {
-    pub data: [u8; 4],
-}
-
-impl ChunkType {
-    pub fn as_str(&self) -> RiffResult<&str> {
-        Ok(std::str::from_utf8(&self.data)?)
-    }
-
-    pub fn as_bytes(&self) -> &[u8; 4] {
-        &self.data
-    }
-}
-
 /// Represents the data that a `Chunk` contains.
 /// There are 3 possible values that any `Chunk` may hold.
 #[derive(Debug)]
@@ -231,20 +217,5 @@ impl<'a> TryFrom<Chunk<'a>> for ChunkContent<'a> {
                 Ok(ChunkContent::RawData(chunk.id(), contents))
             }
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct ChunkId {
-    pub data: [u8; 4],
-}
-
-impl ChunkId {
-    pub fn as_str(&self) -> RiffResult<&str> {
-        Ok(std::str::from_utf8(&self.data)?)
-    }
-
-    pub fn as_bytes(&self) -> &[u8; 4] {
-        &self.data
     }
 }
