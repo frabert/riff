@@ -21,12 +21,12 @@ I hope it will become the de facto way to parse RIFF files in Rust :) -- one can
 
 I am planning on working on:
 
-1. Complete propagation of errors.
+1. ~~Complete propagation of errors.
 A library ought to never panics.
 Every possible errors should propagate back to the user of this library in `RiffError`.
-This also means that `RiffError` needs to be a LOT more robust.
+This also means that `RiffError` needs to be a LOT more robust.~~
 
-2. Ability to dynamically construct RIFF files and write to the machine.
+2. ~~Ability to dynamically construct RIFF files and write to the machine.~~
 
 3. A clean implementation of the lazy version.
 Because a type `T` that satisfy `Read + Seek` must be mutable to do anything.
