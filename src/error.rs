@@ -13,7 +13,7 @@ pub enum RiffError {
     /// Indicates that the requested data is too small to be a valid chunk.
     /// Note that this returns the entire data and the starting position where this "chunk" is supposed to reside.
     ChunkTooSmall(ChunkTooSmall),
-    /// Indicates that the `Chunk` is too small to contain a `ChunkType`.I
+    /// Indicates that the `Chunk` is too small to contain a `FourCC`.I
     ChunkTooSmallForChunkType(ChunkTooSmallForChunkType),
     Utf8Error(std::str::Utf8Error),
     /// Indicates that this is a malformed RIFF file.
@@ -21,6 +21,8 @@ pub enum RiffError {
     InvalidRiffHeader,
     /// Indicates a `None` error caused by unwrapping a `None`.
     NoneError(std::option::NoneError),
+    /// Indicates a failure when trying to convert from `&str` to a slice.
+    TryFromSliceError(std::array::TryFromSliceError),
 }
 
 #[derive(Debug)]
@@ -94,6 +96,14 @@ impl From<std::option::NoneError> for RiffError {
     /// Performs the conversion.
     fn from(v: std::option::NoneError) -> Self {
         RiffError::NoneError(v)
+    }
+}
+
+/// Converts `std::option::NoneError`.
+impl From<std::array::TryFromSliceError> for RiffError {
+    /// Performs the conversion.
+    fn from(v: std::array::TryFromSliceError) -> Self {
+        RiffError::TryFromSliceError(v)
     }
 }
 

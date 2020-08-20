@@ -6,14 +6,14 @@ use std::path::PathBuf;
 use crate::{
     constants::{LIST_ID, RIFF_ID, SEQT_ID},
     error::{RiffError, RiffResult},
-    ChunkId, ChunkType,
+    FourCC,
 };
 
 #[derive(Debug)]
 pub enum ChunkContents {
-    RawData(ChunkId, Vec<u8>),
-    Children(ChunkId, ChunkType, Vec<ChunkContents>),
-    ChildrenNoType(ChunkId, Vec<ChunkContents>),
+    RawData(FourCC, Vec<u8>),
+    Children(FourCC, FourCC, Vec<ChunkContents>),
+    ChildrenNoType(FourCC, Vec<ChunkContents>),
 }
 
 impl TryFrom<Chunk> for ChunkContents {
@@ -51,15 +51,15 @@ impl TryFrom<Chunk> for ChunkContents {
 
 #[derive(Debug)]
 pub struct Chunk {
-    id: ChunkId,
-    chunk_type: Option<ChunkType>,
+    id: FourCC,
+    chunk_type: Option<FourCC>,
     pos: u32,
     payload_len: u32,
     path: PathBuf,
 }
 
 impl Chunk {
-    pub fn id(&self) -> &ChunkId {
+    pub fn id(&self) -> &FourCC {
         &self.id
     }
 
@@ -67,7 +67,7 @@ impl Chunk {
         self.payload_len
     }
 
-    pub fn chunk_type(&self) -> &Option<ChunkType> {
+    pub fn chunk_type(&self) -> &Option<FourCC> {
         &self.chunk_type
     }
 
@@ -77,11 +77,11 @@ impl Chunk {
         let id_buff = Chunk::read_4_bytes(&mut inner_reader, pos)?;
         let payload_len_buff = Chunk::read_4_bytes(&mut inner_reader, pos + 4)?;
         let chunk_type = match Chunk::read_4_bytes(&mut inner_reader, pos + 8) {
-            Ok(result) => Some(ChunkType { data: result }),
+            Ok(result) => Some(FourCC { data: result }),
             Err(_) => None,
         };
         Ok(Chunk {
-            id: ChunkId { data: id_buff },
+            id: FourCC { data: id_buff },
             chunk_type,
             pos: pos as u32,
             payload_len: u32::from_le_bytes(payload_len_buff),

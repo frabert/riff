@@ -2,7 +2,7 @@ use crate::error::{ChunkTooSmall, ChunkTooSmallForChunkType, PayloadLenMismatch,
 use crate::{
     constants::{LIST_ID, RIFF_ID, SEQT_ID},
     error::RiffResult,
-    ChunkId, ChunkType,
+    FourCC,
 };
 use std::convert::TryFrom;
 
@@ -23,10 +23,10 @@ impl<'a> TryFrom<&'a Riff> for Chunk<'a> {
 
 #[allow(dead_code)]
 impl Riff {
-    pub fn id(&self) -> ChunkId {
+    pub fn id(&self) -> FourCC {
         let mut buff: [u8; 4] = [0; 4];
         buff.copy_from_slice(&self.data[0..4]);
-        ChunkId { data: buff }
+        FourCC { data: buff }
     }
 
     pub fn payload_len(&self) -> u32 {
@@ -60,13 +60,13 @@ pub struct Chunk<'a> {
 }
 
 impl<'a> Chunk<'a> {
-    pub fn id(&self) -> ChunkId {
+    pub fn id(&self) -> FourCC {
         let pos = self.pos as usize;
         let mut buff: [u8; 4] = [0; 4];
         // SAFETY: Any creation of `Chunk` must occur through `Chunk::from_raw_u8`.
         // In there, we should already checked that the `data[pos..].len()` is _at least_ 8 bytes long.
         buff.copy_from_slice(&self.data[pos..pos + 4]);
-        ChunkId { data: buff }
+        FourCC { data: buff }
     }
 
     pub fn payload_len(&self) -> u32 {
@@ -91,12 +91,12 @@ impl<'a> Chunk<'a> {
         }
     }
 
-    pub fn chunk_type(&self) -> RiffResult<ChunkType> {
+    pub fn chunk_type(&self) -> RiffResult<FourCC> {
         let pos = self.pos as usize;
         if self.data.len() >= pos + 12 {
             let mut buff: [u8; 4] = [0; 4];
             buff.copy_from_slice(&self.data[pos + 8..pos + 12]);
-            Ok(ChunkType { data: buff })
+            Ok(FourCC { data: buff })
         } else {
             Err(RiffError::ChunkTooSmallForChunkType(
                 ChunkTooSmallForChunkType {
@@ -180,11 +180,11 @@ impl<'a> Iterator for ChunkIter<'a> {
 #[derive(Debug)]
 pub enum ChunkContent<'a> {
     /// Represents a `Chunk` that contains raw data as `&[u8]`.
-    RawData(ChunkId, &'a [u8]),
-    /// Represents a `Chunk` where the payload contains `ChunkType` identifier and a list of `ChunkContent`s.
-    Children(ChunkId, ChunkType, Vec<ChunkContent<'a>>),
+    RawData(FourCC, &'a [u8]),
+    /// Represents a `Chunk` where the payload contains `FourCC` identifier and a list of `ChunkContent`s.
+    Children(FourCC, FourCC, Vec<ChunkContent<'a>>),
     /// Represents a `Chunk` where the payload only contain a list of `ChunkContent`s.
-    ChildrenNoType(ChunkId, Vec<ChunkContent<'a>>),
+    ChildrenNoType(FourCC, Vec<ChunkContent<'a>>),
 }
 
 /// Since `Chunk` is an opaque type. The only way to obtain the `Chunk`'s contents is through this trait.
