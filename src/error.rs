@@ -13,7 +13,7 @@ pub enum RiffError {
     /// Indicates that the requested data is too small to be a valid chunk.
     /// Note that this returns the entire data and the starting position where this "chunk" is supposed to reside.
     ChunkTooSmall(ChunkTooSmall),
-    /// Indicates that the `Chunk` is too small to contain a `FourCC`.I
+    /// Indicates that the `Chunk` is too small to contain a `FourCC`.
     ChunkTooSmallForChunkType(ChunkTooSmallForChunkType),
     Utf8Error(std::str::Utf8Error),
     /// Indicates that this is a malformed RIFF file.
@@ -23,6 +23,8 @@ pub enum RiffError {
     NoneError(std::option::NoneError),
     /// Indicates a failure when trying to convert from `&str` to a slice.
     TryFromSliceError(std::array::TryFromSliceError),
+    /// Indicates an attempt at appending a raw chunk into a chunk with
+    MismatchChunkAdded,
 }
 
 #[derive(Debug)]

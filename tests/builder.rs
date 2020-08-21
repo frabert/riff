@@ -60,7 +60,7 @@ pub fn test_set_3() -> RiffResult<()> {
         .add_chunk(ChunkBuilder::new_type(
             FourCC::new(LIST_ID)?,
             FourCC::new("tst1")?,
-            ChunkData::ChunkData(vec![
+            ChunkData::ChunkList(vec![
                 ChunkBuilder::new_notype(
                     FourCC::new("test")?,
                     ChunkData::RawData("hey this is a test".into()),
@@ -73,7 +73,7 @@ pub fn test_set_3() -> RiffResult<()> {
         ))
         .add_chunk(ChunkBuilder::new_notype(
             FourCC::new("seqt")?,
-            ChunkData::ChunkData(vec![ChunkBuilder::new_notype(
+            ChunkData::ChunkList(vec![ChunkBuilder::new_notype(
                 FourCC::new("test")?,
                 ChunkData::RawData("final test".into()),
             )]),

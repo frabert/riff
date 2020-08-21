@@ -189,7 +189,7 @@ impl<'a> Iterator for ChunkRamIter<'a> {
 pub enum ChunkRamContent<'a> {
     /// Represents a `ChunkRam` that contains raw data as `&[u8]`.
     RawData(FourCC, &'a [u8]),
-    /// Represents a `ChunkRam` where the payload contains `FourCC` identifier and a list of `ChunkRamContent`s.
+    /// Represents a `ChunkRam` where the payload contains the chunk's identifier, the chunk's type and a list of `ChunkRamContent`s.
     Children(FourCC, FourCC, Vec<ChunkRamContent<'a>>),
     /// Represents a `ChunkRam` where the payload only contain a list of `ChunkRamContent`s.
     ChildrenNoType(FourCC, Vec<ChunkRamContent<'a>>),

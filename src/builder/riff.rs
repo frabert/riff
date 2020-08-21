@@ -1,11 +1,19 @@
 use crate::constants::RIFF_ID;
 
-use crate::FourCC;
+use crate::{
+    error::{RiffError, RiffResult},
+    FourCC,
+};
 
-/// TODO:
+/// Helper struct to help user creates chunks.
+///
+/// # NOTE
+///
 /// 1. Add lots and lots of error checking. Since `Vec` use `usize` internally, we have to limit it to `u32`.
 ///    In similar vein, we also need to check for overflow and stuff, especially during subtraction.
 /// 2. Should we separate Type and NoType? We currently represent these types at the most raw level (literally as `Vec<u8>`) which is quite hard to deal with.
+/// 3. Should we lazily calculate the size of the payload or do we want to precalculate the payload as we append chunks.
+///    The latter method is error prone because a user could append to an inner chunk and the parent chunk would have no way of knowing about this size increase.
 #[derive(Debug)]
 pub struct ChunkBuilder {
     pub chunk_id: FourCC,
@@ -15,6 +23,7 @@ pub struct ChunkBuilder {
 }
 
 impl ChunkBuilder {
+    /// Creates a chunk from a `FourCC` and a `ChunkData` that does not contain a 4 bytes identifier for the chunk type.
     pub fn new_notype(id: FourCC, data: ChunkData) -> Self {
         ChunkBuilder {
             chunk_id: id,
@@ -24,6 +33,7 @@ impl ChunkBuilder {
         }
     }
 
+    /// Creates a chunk from 2 `FourCC`s and a `ChunkData` that uses the second `FourCC` and the chunk's type identifier.
     pub fn new_type(id: FourCC, chunk_type: FourCC, data: ChunkData) -> Self {
         ChunkBuilder {
             chunk_id: id,
@@ -33,9 +43,25 @@ impl ChunkBuilder {
         }
     }
 
+    /// Adds a chunk children to this chunk.
+    pub fn add_chunk(mut self, chunk: ChunkBuilder) -> RiffResult<Self> {
+        self.payload_len += 8;
+        if chunk.chunk_type.is_some() {
+            self.payload_len += 4;
+        }
+        match self.data {
+            ChunkData::RawData(_) => return Err(RiffError::MismatchChunkAdded),
+            ChunkData::ChunkList(ref mut vec) => {
+                self.payload_len += vec.iter().map(|x| x.payload_len + 8).sum::<u32>();
+                vec.push(chunk);
+            }
+        }
+        Ok(self)
+    }
+
     fn calculate_payload(data: &ChunkData, offset: u32) -> u32 {
         let payload_len = match &data {
-            ChunkData::ChunkData(data) => data
+            ChunkData::ChunkList(data) => data
                 .iter()
                 .map(|x| {
                     if x.chunk_type.is_none() {
@@ -70,7 +96,7 @@ impl ChunkBuilder {
         }
         match &self.data {
             ChunkData::RawData(raw) => result.extend_from_slice(&raw),
-            ChunkData::ChunkData(chunks) => {
+            ChunkData::ChunkList(chunks) => {
                 for x in chunks {
                     x.to_bytes(&mut result);
                 }
@@ -117,7 +143,7 @@ impl RiffBuilder {
             ChunkData::RawData(ref raw) => {
                 self.payload_len += raw.len() as u32;
             }
-            ChunkData::ChunkData(ref vec) => {
+            ChunkData::ChunkList(ref vec) => {
                 self.payload_len += vec.iter().map(|x| x.payload_len + 8).sum::<u32>()
             }
         }
@@ -129,5 +155,5 @@ impl RiffBuilder {
 #[derive(Debug)]
 pub enum ChunkData {
     RawData(Vec<u8>),
-    ChunkData(Vec<ChunkBuilder>),
+    ChunkList(Vec<ChunkBuilder>),
 }
