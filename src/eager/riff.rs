@@ -7,15 +7,30 @@ use crate::{
 use std::convert::TryFrom;
 
 /// An eager representation of a RIFF file.
+/// This struct will read the entire file and load it into resident memory.
+///
+/// # Example
+///
+/// ```rust
+/// # use riffu::eager::riff::RiffRam;
+/// # use riffu::error::RiffResult;
+/// # pub fn main() -> RiffResult<()>{
+/// let riff = RiffRam::from_file("test_assets/set_1.riff")?;
+/// assert_eq!(riff.as_bytes(), vec![82, 73, 70, 70, 14, 0, 0, 0, 115, 109, 112, 108, 116, 101, 115, 116, 1, 0, 0, 0, 255, 0]);
+/// # Ok(())
+/// # }
+/// ```
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct RiffRam {
-    data: Vec<u8>,
+    pub(crate) data: Vec<u8>,
 }
 
+/// `RiffRam` can be converted to a `ChunkRam`.
 impl<'a> TryFrom<&'a RiffRam> for ChunkRam<'a> {
     type Error = RiffError;
 
+    /// Performs the conversion.
     fn try_from(value: &'a RiffRam) -> RiffResult<Self> {
         Ok(ChunkRam::from_raw_u8(&value.data, 0)?)
     }
@@ -23,22 +38,74 @@ impl<'a> TryFrom<&'a RiffRam> for ChunkRam<'a> {
 
 #[allow(dead_code)]
 impl RiffRam {
+    /// Returns the ASCII idientifier of the RIFF file.
+    /// It _should_ only return the character `RIFF` and nothing else.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use riffu::{constants::RIFF_ID, error::RiffResult, eager::riff::RiffRam};
+    /// # pub fn main() -> RiffResult<()> {
+    /// let riff = RiffRam::from_file("test_assets/set_1.riff")?;
+    /// assert_eq!(riff.id().as_str()?, RIFF_ID);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn id(&self) -> FourCC {
         let mut buff: [u8; 4] = [0; 4];
         buff.copy_from_slice(&self.data[0..4]);
         FourCC { data: buff }
     }
 
+    /// Returns the payload length of this RIFF file excluding the ASCII identifier and the 32-bits
+    /// representig this payload length.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use riffu::{constants::RIFF_ID, error::RiffResult, eager::riff::RiffRam};
+    /// # pub fn main() -> RiffResult<()> {
+    /// let riff = RiffRam::from_file("test_assets/set_1.riff")?;
+    /// assert_eq!(riff.payload_len(), 14);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn payload_len(&self) -> u32 {
         let mut buff: [u8; 4] = [0; 4];
         buff.copy_from_slice(&self.data[4..8]);
         u32::from_le_bytes(buff)
     }
 
+    /// Returns the iterator over this chunk's children.
+    ///
+    /// This is just a wrapper over converting this RIFF struct into a chunk and return the chunk's
+    /// iterator.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use riffu::{constants::RIFF_ID, error::RiffResult, eager::riff::RiffRam};
+    /// # pub fn main() -> RiffResult<()> {
+    /// let riff = RiffRam::from_file("test_assets/set_1.riff")?;
+    /// assert_eq!(riff.iter()?.next()??.id().as_str()?, "test");
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn iter(&self) -> RiffResult<ChunkRamIter> {
-        Ok(ChunkRam::from_raw_u8(self.data.as_slice(), 0)?.iter())
+        Ok(ChunkRam::try_from(self)?.iter())
     }
 
+    /// Creates this struct from a file path.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use riffu::{constants::RIFF_ID, error::RiffResult, eager::riff::RiffRam};
+    /// # pub fn main() -> RiffResult<()> {
+    /// let riff = RiffRam::from_file("test_assets/set_1.riff")?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn from_file<T>(path: T) -> RiffResult<Self>
     where
         T: Into<std::path::PathBuf>,
@@ -46,12 +113,31 @@ impl RiffRam {
         let path = path.into();
         let data = std::fs::read(path)?;
         if data.len() >= 8 {
-            Ok(RiffRam { data })
+            let mut id_buff: [u8; 4] = [0; 4];
+            id_buff.copy_from_slice(&data[0..4]);
+            let id = FourCC { data: id_buff };
+            if id.as_str()? == RIFF_ID {
+                Ok(RiffRam { data })
+            } else {
+                Err(RiffError::InvalidRiffHeader)
+            }
         } else {
             Err(RiffError::ChunkTooSmall(ChunkTooSmall { data, pos: 0 }))
         }
     }
 
+    /// Returns the content of this RIFF file as a slice of bytes.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use riffu::{constants::RIFF_ID, error::RiffResult, eager::riff::RiffRam};
+    /// # pub fn main() -> RiffResult<()> {
+    /// let riff = RiffRam::from_file("test_assets/set_1.riff")?;
+    /// assert_eq!(riff.as_bytes(), &[82, 73, 70, 70, 14, 0, 0, 0, 115, 109, 112, 108, 116, 101, 115, 116, 1, 0, 0, 0, 255, 0]);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn as_bytes(&self) -> &[u8] {
         &self.data
     }
