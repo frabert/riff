@@ -153,7 +153,10 @@ pub struct ChunkRam<'a> {
     data: &'a [u8],
 }
 
+/// Implementation of `ChunkRam`.
 impl<'a> ChunkRam<'a> {
+
+    /// Returns the ASCII identifier.
     pub fn id(&self) -> FourCC {
         let pos = self.pos as usize;
         let mut buff: [u8; 4] = [0; 4];
@@ -163,10 +166,12 @@ impl<'a> ChunkRam<'a> {
         FourCC { data: buff }
     }
 
+    /// Returns the payload length.
     pub fn payload_len(&self) -> u32 {
         self.payload_len
     }
 
+    /// Creates a `ChunkRam` from raw array of bytes.
     pub fn from_raw_u8(data: &[u8], pos: u32) -> RiffResult<ChunkRam> {
         let pos = pos as usize;
         if data.len() >= pos + 8 {
@@ -185,6 +190,9 @@ impl<'a> ChunkRam<'a> {
         }
     }
 
+    /// Returns the chunk type of this `ChunkRam` if possible.
+    /// It will return an error if the data contained in this `ChunkRam` is too short to contain any.
+    /// Note that this library does not guarantee if the returned `FourCC` is a valid RIFF identifier.
     pub fn chunk_type(&self) -> RiffResult<FourCC> {
         let pos = self.pos as usize;
         if self.data.len() >= pos + 12 {
@@ -201,6 +209,7 @@ impl<'a> ChunkRam<'a> {
         }
     }
 
+    /// Returns the data that this `ChunkRam` hold as raw array of bytes.
     pub fn get_raw_child(&self) -> RiffResult<&'a [u8]> {
         let pos = self.pos as usize;
         let payload_len = self.payload_len as usize;
@@ -208,6 +217,8 @@ impl<'a> ChunkRam<'a> {
             Ok(RIFF_ID) | Ok(LIST_ID) => 12,
             _ => 8,
         };
+        /// NOTE: It ought to be possible to completely avoid this check because we control the
+        /// creation of this struct.
         if self.data.len() >= pos + offset + payload_len {
             Ok(&self.data[pos + offset..pos + offset + payload_len])
         } else {
@@ -220,6 +231,7 @@ impl<'a> ChunkRam<'a> {
         }
     }
 
+    /// Returns an iterator over the data of this `ChunkRam`.
     pub fn iter(&self) -> ChunkRamIter<'a> {
         match self.id().as_str() {
             Ok(RIFF_ID) | Ok(LIST_ID) => ChunkRamIter {
@@ -248,9 +260,11 @@ pub struct ChunkRamIter<'a> {
     error_occurred: bool,
 }
 
+/// Implementation of `ChunkRamIter`.
 impl<'a> Iterator for ChunkRamIter<'a> {
     type Item = RiffResult<ChunkRam<'a>>;
 
+    /// Get the next `ChunkRam` if it exists.
     fn next(&mut self) -> Option<Self::Item> {
         if self.error_occurred || self.cursor >= self.cursor_end {
             None
@@ -285,6 +299,7 @@ pub enum ChunkRamContent<'a> {
 impl<'a> TryFrom<ChunkRam<'a>> for ChunkRamContent<'a> {
     type Error = RiffError;
 
+    /// Performs the conversion.
     fn try_from(chunk: ChunkRam<'a>) -> RiffResult<Self> {
         match chunk.id().as_str() {
             Ok(RIFF_ID) | Ok(LIST_ID) => {

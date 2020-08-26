@@ -35,6 +35,8 @@ However, because we are recursively parsing through the file, it complains that 
 
 4. Unify the interface of the 2 versions under a trait.
 
+5. Conversion from each of these representations.
+
 ## Note
 
 This is a fork of the [original library](https://github.com/frabert/riff) with major changes (practically a rewrite of the entire thing).

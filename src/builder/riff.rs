@@ -7,6 +7,23 @@ use crate::{
 
 /// Helper struct to help user creates chunks.
 ///
+/// # Example
+///
+/// ```rust
+/// # use riffu::builder::riff::{RiffBuilder, ChunkBuilder,ChunkData};
+/// # use riffu::error::{RiffError, RiffResult};
+/// # use riffu::FourCC;
+///
+/// pub fn main() -> RiffResult<()> {
+///     assert_eq!(chunk_1.payload_len, 4);
+///     let chunk_2 = ChunkBuilder::new_notype(FourCC::new("test")?, ChunkData::RawData(vec![]));
+///     assert_eq!(chunk_2.payload_len, 0);
+///     Ok(())
+/// }
+/// ```
+///
+/// See the tests folder to see more examples.
+///
 /// # NOTE
 ///
 /// 1. Add lots and lots of error checking. Since `Vec` use `usize` internally, we have to limit it to `u32`.
@@ -22,6 +39,7 @@ pub struct ChunkBuilder {
     pub data: ChunkData,
 }
 
+/// Implementation of ChunkBuilder.
 impl ChunkBuilder {
     /// Creates a chunk from a `FourCC` and a `ChunkData` that does not contain a 4 bytes identifier for the chunk type.
     pub fn new_notype(id: FourCC, data: ChunkData) -> Self {
@@ -59,6 +77,9 @@ impl ChunkBuilder {
         Ok(self)
     }
 
+    /// Helper function to calculate the payload of a given data.
+    /// Because each creation of `ChunkData` will have already calculated its payload length, we
+    /// don't have to recursively calculate.
     fn calculate_payload(data: &ChunkData, offset: u32) -> u32 {
         let payload_len = match &data {
             ChunkData::ChunkList(data) => data
@@ -76,6 +97,10 @@ impl ChunkBuilder {
         payload_len + offset
     }
 
+    /// Helper function that will append `0` to the end of the internal data if the number of bytes
+    /// is odd.
+    ///
+    /// This is required by the RIFF standard.
     fn fit_data(data: ChunkData) -> ChunkData {
         match data {
             ChunkData::RawData(mut vec) => {
@@ -88,6 +113,7 @@ impl ChunkBuilder {
         }
     }
 
+    /// Converts this `ChunkBuilder` into bytes.
     fn to_bytes<'a>(&self, mut result: &'a mut Vec<u8>) -> &'a Vec<u8> {
         result.extend_from_slice(self.chunk_id.as_bytes());
         result.extend_from_slice(&self.payload_len.to_le_bytes());
@@ -106,6 +132,36 @@ impl ChunkBuilder {
     }
 }
 
+/// This is technically just a helper function that will create a Chunk with proper RIFF formatting.
+/// For example, it will assume that the identifier is "RIFF" and does not directly allow users to
+/// append it to others (which is possible because this can be converted into a `ChunkBuilder`).
+///
+/// # Example
+///
+/// ```rust
+/// # use riffu::builder::riff::{RiffBuilder, ChunkBuilder,ChunkData};
+/// # use riffu::error::{RiffError, RiffResult};
+/// # use riffu::FourCC;
+/// pub fn main() -> RiffResult<()> {
+///     assert_eq!(RiffBuilder::new(FourCC::new("smpl")?).payload_len, 4);
+///     let chunk_1 = ChunkBuilder::new_type(
+///        FourCC::new("test")?,
+///        FourCC::new("test")?,
+///        ChunkData::RawData(vec![]),
+///    );
+///     assert_eq!(chunk_1.payload_len, 4);
+///    let chunk_2 = ChunkBuilder::new_notype(FourCC::new("test")?, ChunkData::RawData(vec![]));
+///     assert_eq!(chunk_2.payload_len, 0);
+///     let built_riff = RiffBuilder::new(FourCC::new("smpl")?)
+///         .add_chunk(chunk_1)
+///         .add_chunk(chunk_2);
+///     assert_eq!(built_riff.payload_len, 4 + (4 + 4 + 4) + (4 + 4));
+///     Ok(())
+/// }
+/// ```
+///
+/// Please take a look at the tests folder to see more examples.
+///
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct RiffBuilder {
@@ -114,6 +170,7 @@ pub struct RiffBuilder {
     pub data: Vec<ChunkBuilder>,
 }
 
+/// Implementation of `RiffBuilder`.
 impl RiffBuilder {
     pub fn new(chunk_type: FourCC) -> Self {
         RiffBuilder {
@@ -123,6 +180,7 @@ impl RiffBuilder {
         }
     }
 
+    /// Performs the conversions to owned array of bytes.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut result = Vec::new();
         result.extend_from_slice(RIFF_ID.as_bytes());
@@ -134,6 +192,7 @@ impl RiffBuilder {
         result
     }
 
+    /// Appends a `ChunkBuilder` to this `RiffBuilder`.
     pub fn add_chunk(mut self, chunk: ChunkBuilder) -> Self {
         self.payload_len += 8;
         if chunk.chunk_type.is_some() {
@@ -152,6 +211,7 @@ impl RiffBuilder {
     }
 }
 
+/// Represents the two kind of data a chunk can hold.
 #[derive(Debug)]
 pub enum ChunkData {
     RawData(Vec<u8>),

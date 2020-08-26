@@ -9,6 +9,7 @@ use crate::{
     FourCC,
 };
 
+/// Represents the possible data contained in a `ChunkDisk`.
 #[derive(Debug)]
 pub enum ChunkDiskContent {
     RawData(FourCC, Vec<u8>),
@@ -16,9 +17,12 @@ pub enum ChunkDiskContent {
     ChildrenNoType(FourCC, Vec<ChunkDiskContent>),
 }
 
+/// `ChunkDisk` is an opaque type. The only way to access its content is by converting it into
+/// a `ChunkDiskContent`.
 impl TryFrom<ChunkDisk> for ChunkDiskContent {
     type Error = RiffError;
 
+    /// Performs the conversion.
     fn try_from(chunk: ChunkDisk) -> RiffResult<Self> {
         let chunk_id = chunk.id().clone();
         match chunk_id.as_str() {
@@ -49,6 +53,8 @@ impl TryFrom<ChunkDisk> for ChunkDiskContent {
     }
 }
 
+
+/// Represents a lazy reader of a chunk in a RIFF file.
 #[derive(Debug)]
 pub struct ChunkDisk {
     id: FourCC,
