@@ -30,7 +30,6 @@ pub enum RiffError {
 #[derive(Debug)]
 pub struct ChunkTooSmallForChunkType {
     pub(crate) data: Vec<u8>,
-    pub(crate) pos: usize,
 }
 
 impl std::fmt::Display for ChunkTooSmallForChunkType {
@@ -42,7 +41,6 @@ impl std::fmt::Display for ChunkTooSmallForChunkType {
 #[derive(Debug)]
 pub struct ChunkTooSmall {
     pub(crate) data: Vec<u8>,
-    pub(crate) pos: usize,
 }
 
 impl std::fmt::Display for ChunkTooSmall {
@@ -54,9 +52,6 @@ impl std::fmt::Display for ChunkTooSmall {
 #[derive(Debug)]
 pub struct PayloadLenMismatch {
     pub(crate) data: Vec<u8>,
-    pub(crate) pos: usize,
-    pub(crate) offset: usize,
-    pub(crate) payload_len: usize,
 }
 
 impl std::fmt::Display for PayloadLenMismatch {

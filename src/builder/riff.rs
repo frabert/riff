@@ -15,7 +15,6 @@ use crate::{
 /// # use riffu::FourCC;
 ///
 /// pub fn main() -> RiffResult<()> {
-///     assert_eq!(chunk_1.payload_len, 4);
 ///     let chunk_2 = ChunkBuilder::new_notype(FourCC::new("test")?, ChunkData::RawData(vec![]));
 ///     assert_eq!(chunk_2.payload_len, 0);
 ///     Ok(())

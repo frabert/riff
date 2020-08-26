@@ -32,7 +32,7 @@ impl<'a> TryFrom<&'a RiffRam> for ChunkRam<'a> {
 
     /// Performs the conversion.
     fn try_from(value: &'a RiffRam) -> RiffResult<Self> {
-        Ok(ChunkRam::from_raw_u8(&value.data, 0)?)
+        Ok(ChunkRam::from_raw_u8(&value.data)?)
     }
 }
 
@@ -122,7 +122,7 @@ impl RiffRam {
                 Err(RiffError::InvalidRiffHeader)
             }
         } else {
-            Err(RiffError::ChunkTooSmall(ChunkTooSmall { data, pos: 0 }))
+            Err(RiffError::ChunkTooSmall(ChunkTooSmall { data }))
         }
     }
 
@@ -148,44 +148,44 @@ impl RiffRam {
 /// Note that this is an opaque type, to obtain its content, one must convert it into a `ChunkRamContent`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChunkRam<'a> {
-    pos: u32,
-    payload_len: u32,
     data: &'a [u8],
 }
 
 /// Implementation of `ChunkRam`.
 impl<'a> ChunkRam<'a> {
-
     /// Returns the ASCII identifier.
     pub fn id(&self) -> FourCC {
-        let pos = self.pos as usize;
         let mut buff: [u8; 4] = [0; 4];
         // SAFETY: Any creation of `ChunkRam` must occur through `ChunkRam::from_raw_u8`.
         // In there, we should already checked that the `data[pos..].len()` is _at least_ 8 bytes long.
-        buff.copy_from_slice(&self.data[pos..pos + 4]);
+        buff.copy_from_slice(&self.data[..4]);
         FourCC { data: buff }
     }
 
     /// Returns the payload length.
     pub fn payload_len(&self) -> u32 {
-        self.payload_len
+        let mut buff: [u8; 4] = [0; 4];
+        // SAFETY: Any creation of `ChunkRam` must occur through `ChunkRam::from_raw_u8`.
+        // In there, we should already checked that the `data[pos..].len()` is _at least_ 8 bytes long.
+        buff.copy_from_slice(&self.data[4..8]);
+        u32::from_le_bytes(buff)
     }
 
     /// Creates a `ChunkRam` from raw array of bytes.
-    pub fn from_raw_u8(data: &[u8], pos: u32) -> RiffResult<ChunkRam> {
-        let pos = pos as usize;
-        if data.len() >= pos + 8 {
-            let mut payload_buff: [u8; 4] = [0; 4];
-            payload_buff.copy_from_slice(&data[pos + 4..pos + 8]);
-            Ok(ChunkRam {
-                pos: pos as u32,
-                payload_len: u32::from_le_bytes(payload_buff),
-                data,
-            })
+    pub fn from_raw_u8(data: &[u8]) -> RiffResult<ChunkRam> {
+        if data.len() >= 8 {
+            let chunk = ChunkRam { data: &data };
+            // Guarantee that the data given is able to satisfy the payload length provided.
+            if data.len() == chunk.payload_len() as usize + 8 {
+                Ok(chunk)
+            } else {
+                Err(RiffError::PayloadLenMismatch(PayloadLenMismatch {
+                    data: Vec::from(data),
+                }))
+            }
         } else {
             Err(RiffError::ChunkTooSmall(ChunkTooSmall {
                 data: Vec::from(data),
-                pos,
             }))
         }
     }
@@ -194,16 +194,14 @@ impl<'a> ChunkRam<'a> {
     /// It will return an error if the data contained in this `ChunkRam` is too short to contain any.
     /// Note that this library does not guarantee if the returned `FourCC` is a valid RIFF identifier.
     pub fn chunk_type(&self) -> RiffResult<FourCC> {
-        let pos = self.pos as usize;
-        if self.data.len() >= pos + 12 {
+        if self.data.len() >= 12 {
             let mut buff: [u8; 4] = [0; 4];
-            buff.copy_from_slice(&self.data[pos + 8..pos + 12]);
+            buff.copy_from_slice(&self.data[8..12]);
             Ok(FourCC { data: buff })
         } else {
             Err(RiffError::ChunkTooSmallForChunkType(
                 ChunkTooSmallForChunkType {
                     data: Vec::from(self.data),
-                    pos,
                 },
             ))
         }
@@ -211,22 +209,17 @@ impl<'a> ChunkRam<'a> {
 
     /// Returns the data that this `ChunkRam` hold as raw array of bytes.
     pub fn get_raw_child(&self) -> RiffResult<&'a [u8]> {
-        let pos = self.pos as usize;
-        let payload_len = self.payload_len as usize;
         let offset = match self.id().as_str() {
             Ok(RIFF_ID) | Ok(LIST_ID) => 12,
             _ => 8,
         };
-        /// NOTE: It ought to be possible to completely avoid this check because we control the
-        /// creation of this struct.
-        if self.data.len() >= pos + offset + payload_len {
-            Ok(&self.data[pos + offset..pos + offset + payload_len])
+        // NOTE: It ought to be possible to completely avoid this check because we control the
+        // creation of this struct.
+        if self.data.len() >= offset {
+            Ok(&self.data[offset..offset + self.payload_len() as usize])
         } else {
             Err(RiffError::PayloadLenMismatch(PayloadLenMismatch {
                 data: Vec::from(self.data),
-                pos,
-                offset,
-                payload_len,
             }))
         }
     }
@@ -235,19 +228,31 @@ impl<'a> ChunkRam<'a> {
     pub fn iter(&self) -> ChunkRamIter<'a> {
         match self.id().as_str() {
             Ok(RIFF_ID) | Ok(LIST_ID) => ChunkRamIter {
-                cursor: self.pos + 12,
-                // We have to subtract because RIFF_ID and LIST_ID contain chunk type that consumes 4 bytes.
-                cursor_end: self.pos + 12 + self.payload_len - 4,
-                data: self.data,
+                cursor: 0,
+                data: &self.data[12..],
                 error_occurred: false,
             },
             _ => ChunkRamIter {
-                cursor: self.pos + 8,
-                cursor_end: self.pos + 8 + self.payload_len,
-                data: self.data,
+                cursor: 0,
+                data: &self.data[8..],
                 error_occurred: false,
             },
         }
+    }
+}
+
+fn payload_length(data: &[u8]) -> RiffResult<u32> {
+    if data.len() >= 8 {
+        let mut buff: [u8; 4] = [0; 4];
+        // SAFETY: Any creation of `ChunkRam` must occur through `ChunkRam::from_raw_u8`.
+        // In there, we should already checked that the `data[pos..].len()` is _at least_ 8 bytes long.
+        buff.copy_from_slice(&data[4..8]);
+        Ok(u32::from_le_bytes(buff))
+    } else {
+        // Should probably be an error specific to the data begin too small.
+        Err(RiffError::ChunkTooSmall(ChunkTooSmall {
+            data: Vec::from(data),
+        }))
     }
 }
 
@@ -255,7 +260,6 @@ impl<'a> ChunkRam<'a> {
 #[derive(Debug)]
 pub struct ChunkRamIter<'a> {
     cursor: u32,
-    cursor_end: u32,
     data: &'a [u8],
     error_occurred: bool,
 }
@@ -266,13 +270,33 @@ impl<'a> Iterator for ChunkRamIter<'a> {
 
     /// Get the next `ChunkRam` if it exists.
     fn next(&mut self) -> Option<Self::Item> {
-        if self.error_occurred || self.cursor >= self.cursor_end {
+        if self.error_occurred || self.cursor as usize == self.data.len() {
             None
         } else {
-            match ChunkRam::from_raw_u8(self.data, self.cursor) {
-                Ok(chunk) => {
-                    self.cursor = self.cursor + 8 + chunk.payload_len + (chunk.payload_len % 2);
-                    Some(Ok(chunk))
+            let cursor = self.cursor as usize;
+            match payload_length(&self.data[cursor..]) {
+                Ok(payload_len) => {
+                    let payload_len = payload_len as usize;
+                    if self.data.len() >= cursor + 8 + payload_len {
+                        match ChunkRam::from_raw_u8(&self.data[cursor..cursor + 8 + payload_len]) {
+                            Ok(chunk) => {
+                                self.cursor = self.cursor
+                                    + 8
+                                    + chunk.payload_len()
+                                    + (chunk.payload_len() % 2);
+                                Some(Ok(chunk))
+                            }
+                            Err(err) => {
+                                self.error_occurred = true;
+                                Some(Err(err))
+                            }
+                        }
+                    } else {
+                        self.error_occurred = true;
+                        Some(Err(RiffError::ChunkTooSmall(ChunkTooSmall {
+                            data: Vec::from(&self.data[cursor..]),
+                        })))
+                    }
                 }
                 Err(err) => {
                     self.error_occurred = true;

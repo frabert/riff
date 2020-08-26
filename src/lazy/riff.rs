@@ -53,7 +53,6 @@ impl TryFrom<ChunkDisk> for ChunkDiskContent {
     }
 }
 
-
 /// Represents a lazy reader of a chunk in a RIFF file.
 #[derive(Debug)]
 pub struct ChunkDisk {
