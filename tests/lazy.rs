@@ -2,130 +2,169 @@ extern crate riffu;
 
 use riffu::{
     constants::{LIST_ID, RIFF_ID},
-    error::RiffResult,
-    lazy::riff::{ChunkDisk, RiffDisk},
+    lazy::riff::ChunkDisk,
 };
-use std::convert::TryFrom;
 
 #[test]
-fn test_set_1() -> RiffResult<()> {
-    let file = RiffDisk::from_file("test_assets/set_1.riff")?;
-    let chunk_root = ChunkDisk::try_from(file)?;
-    assert_eq!(chunk_root.payload_len(), 14);
-    assert_eq!(chunk_root.id().as_str()?, "RIFF");
-    assert_eq!(chunk_root.chunk_type().as_ref()?.as_str()?, "smpl");
+fn test_set_1() {
+    let mut chunk_root = ChunkDisk::from_path("test_assets/set_1.riff").unwrap();
+    assert_eq!(chunk_root.payload_len().unwrap(), 14);
+    assert_eq!(chunk_root.id().unwrap().as_bytes(), b"RIFF");
+    assert_eq!(chunk_root.chunk_type().unwrap().as_bytes(), b"smpl");
     let expected_content = vec![("test", vec![255])];
     assert_eq!(
-        chunk_root.iter()?.fold(0, |acc, _| acc + 1),
+        chunk_root.iter().unwrap().fold(0, |acc, _| acc + 1),
         expected_content.len()
     );
-    for (chunk, (expected_name, expected_data)) in chunk_root.iter()?.zip(expected_content) {
-        let chunk = chunk?;
+    for (chunk, (expected_name, expected_data)) in chunk_root.iter().unwrap().zip(expected_content)
+    {
+        let mut chunk = chunk.unwrap();
         assert_eq!("test", expected_name);
-        assert_eq!(chunk.get_raw_child()?.len(), expected_data.len());
-        assert_eq!(chunk.get_raw_child()?, expected_data);
+        assert_eq!(chunk.get_raw_child().unwrap().len(), expected_data.len());
+        assert_eq!(chunk.get_raw_child().unwrap(), expected_data);
     }
-    Ok(())
 }
 
 #[test]
-fn test_set_2() -> RiffResult<()> {
-    let file = RiffDisk::from_file("test_assets/set_2.riff")?;
-    let chunk_root = ChunkDisk::try_from(file)?;
-    assert_eq!(chunk_root.payload_len(), 24);
-    assert_eq!(chunk_root.id().as_str()?, "RIFF");
-    assert_eq!(chunk_root.chunk_type().as_ref()?.as_str()?, "smpl");
-    let expected_content = vec![("tst1", vec![255]), ("tst2", vec![238])];
+fn test_set_2() {
+    let mut chunk_root = ChunkDisk::from_path("test_assets/set_2.riff").unwrap();
+    assert_eq!(chunk_root.payload_len().unwrap(), 24);
+    assert_eq!(chunk_root.id().unwrap().as_bytes(), b"RIFF");
+    assert_eq!(chunk_root.chunk_type().unwrap().as_bytes(), b"smpl");
+    let expected_content = vec![(b"tst1", vec![255]), (b"tst2", vec![238])];
     assert_eq!(
-        chunk_root.iter()?.fold(0, |acc, _| acc + 1),
+        chunk_root.iter().unwrap().fold(0, |acc, _| acc + 1),
         expected_content.len()
     );
-    for (chunk, (name, data)) in chunk_root.iter()?.zip(expected_content) {
-        let chunk = chunk?;
-        assert_eq!(chunk.id().as_str()?, name);
-        assert_eq!(chunk.get_raw_child()?.len(), data.len());
-        assert_eq!(chunk.get_raw_child()?, data);
+    for (chunk, (name, data)) in chunk_root.iter().unwrap().zip(expected_content) {
+        let mut chunk = chunk.unwrap();
+        assert_eq!(chunk.id().unwrap().as_bytes(), name);
+        assert_eq!(chunk.get_raw_child().unwrap().len(), data.len());
+        assert_eq!(chunk.get_raw_child().unwrap(), data);
     }
-    Ok(())
 }
 
 #[test]
-fn test_set_3() -> RiffResult<()> {
-    let file = RiffDisk::from_file("test_assets/set_3.riff")?;
-    let chunk_root = ChunkDisk::try_from(file)?;
+fn test_set_3() {
+    let mut chunk_root = ChunkDisk::from_path("test_assets/set_3.riff").unwrap();
     {
-        assert_eq!(chunk_root.payload_len(), 100);
-        assert_eq!(chunk_root.id().as_str()?, riffu::constants::RIFF_ID);
-        assert_eq!(chunk_root.chunk_type().as_ref()?.as_str()?, "smpl");
-        assert_eq!(chunk_root.iter()?.fold(0, |acc, _| acc + 1), 2);
-    }
-    {
-        let list_1 = chunk_root.iter()?.next()??;
-        assert_eq!(list_1.id().as_str()?, riffu::constants::LIST_ID);
-        assert_eq!(list_1.chunk_type().as_ref()?.as_str()?, "tst1");
-        assert_eq!(list_1.iter()?.fold(0, |acc, _| acc + 1), 2);
-        {
-            let test = list_1.iter()?.next()??;
-            assert_eq!(test.id().as_str()?, "test");
-            assert_eq!(test.get_raw_child()?, "hey this is a test".as_bytes());
-        }
-        {
-            let test = list_1.iter()?.skip(1).next()??;
-            assert_eq!(test.id().as_str()?, "test");
-            assert_eq!(test.get_raw_child()?, "hey this is another test".as_bytes());
-        }
-    }
-    {
-        let list_1 = chunk_root.iter()?.skip(1).next()??;
-        assert_eq!(list_1.id().as_str()?, "seqt");
-        assert_eq!(list_1.iter()?.fold(0, |acc, _| acc + 1), 1);
-        assert_eq!(list_1.iter()?.next()??.id().as_str()?, "test");
+        assert_eq!(chunk_root.payload_len().unwrap(), 100);
         assert_eq!(
-            list_1.iter()?.next()??.get_raw_child()?,
-            "final test".as_bytes()
+            chunk_root.id().unwrap().as_bytes(),
+            riffu::constants::RIFF_ID
+        );
+        assert_eq!(chunk_root.chunk_type().unwrap().as_bytes(), b"smpl");
+        assert_eq!(chunk_root.iter().unwrap().fold(0, |acc, _| acc + 1), 2);
+    }
+    {
+        let mut list_1 = chunk_root.iter().unwrap().next().unwrap().unwrap();
+        assert_eq!(list_1.id().unwrap().as_bytes(), riffu::constants::LIST_ID);
+        assert_eq!(list_1.chunk_type().unwrap().as_bytes(), b"tst1");
+        assert_eq!(list_1.iter().unwrap().fold(0, |acc, _| acc + 1), 2);
+        {
+            let mut test = list_1.iter().unwrap().next().unwrap().unwrap();
+            assert_eq!(test.id().unwrap().as_bytes(), b"test");
+            assert_eq!(
+                test.get_raw_child().unwrap(),
+                "hey this is a test".as_bytes()
+            );
+        }
+        {
+            let mut test = list_1.iter().unwrap().skip(1).next().unwrap().unwrap();
+            assert_eq!(test.id().unwrap().as_bytes(), b"test");
+            assert_eq!(
+                test.get_raw_child().unwrap(),
+                "hey this is another test".as_bytes()
+            );
+        }
+    }
+    {
+        let mut list_1 = chunk_root.iter().unwrap().skip(1).next().unwrap().unwrap();
+        assert_eq!(list_1.id().unwrap().as_bytes(), b"seqt");
+        assert_eq!(list_1.iter().unwrap().fold(0, |acc, _| acc + 1), 1);
+        assert_eq!(
+            list_1
+                .iter()
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+                .id()
+                .unwrap()
+                .as_bytes(),
+            b"test"
+        );
+        assert_eq!(
+            list_1
+                .iter()
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+                .get_raw_child()
+                .unwrap(),
+            b"final test"
         );
     }
-    Ok(())
 }
 
 #[test]
-fn test_set_4() -> RiffResult<()> {
-    let file = RiffDisk::from_file("test_assets/set_4.riff")?;
-    let chunk_root = ChunkDisk::try_from(file)?;
+fn test_set_4() {
+    let mut chunk_root = ChunkDisk::from_path("test_assets/set_4.riff").unwrap();
     {
-        assert_eq!(chunk_root.payload_len(), 102);
-        assert_eq!(chunk_root.id().as_str()?, RIFF_ID);
-        assert_eq!(chunk_root.chunk_type().as_ref()?.as_str()?, "smpl");
-        assert_eq!(chunk_root.iter()?.fold(0, |acc, _| acc + 1), 2);
+        assert_eq!(chunk_root.payload_len().unwrap(), 102);
+        assert_eq!(chunk_root.id().unwrap().as_bytes(), RIFF_ID);
+        assert_eq!(chunk_root.chunk_type().unwrap().as_bytes(), b"smpl");
+        assert_eq!(chunk_root.iter().unwrap().fold(0, |acc, _| acc + 1), 2);
     }
     {
-        let list_1 = chunk_root.iter()?.next()??;
-        assert_eq!(list_1.id().as_str()?, LIST_ID);
-        assert_eq!(list_1.chunk_type().as_ref()?.as_str()?, "tst1");
-        assert_eq!(list_1.iter()?.fold(0, |acc, _| acc + 1), 2);
+        let mut list_1 = chunk_root.iter().unwrap().next().unwrap().unwrap();
+        assert_eq!(list_1.id().unwrap().as_bytes(), LIST_ID);
+        assert_eq!(list_1.chunk_type().unwrap().as_bytes(), b"tst1");
+        assert_eq!(list_1.iter().unwrap().fold(0, |acc, _| acc + 1), 2);
         {
-            let test = list_1.iter()?.next()??;
-            assert_eq!(test.id().as_str()?, "test");
-            assert_eq!(test.get_raw_child()?, "hey this is a test".as_bytes());
+            let mut test = list_1.iter().unwrap().next().unwrap().unwrap();
+            assert_eq!(test.id().unwrap().as_bytes(), b"test");
+            assert_eq!(
+                test.get_raw_child().unwrap(),
+                "hey this is a test".as_bytes()
+            );
         }
         {
-            let test = list_1.iter()?.skip(1).next()??;
-            assert_eq!(test.id().as_str()?, "test");
+            let mut test = list_1.iter().unwrap().skip(1).next().unwrap().unwrap();
+            assert_eq!(test.id().unwrap().as_bytes(), b"test");
             assert_eq!(
-                test.get_raw_child()?,
+                test.get_raw_child().unwrap(),
                 "hey this is another test!".as_bytes()
             );
         }
     }
     {
-        let list_1 = chunk_root.iter()?.skip(1).next()??;
-        assert_eq!(list_1.id().as_str()?, "seqt");
-        assert_eq!(list_1.iter()?.fold(0, |acc, _| acc + 1), 1);
-        assert_eq!(list_1.iter()?.next()??.id().as_str()?, "test");
+        let mut list_1 = chunk_root.iter().unwrap().skip(1).next().unwrap().unwrap();
+        assert_eq!(list_1.id().unwrap().as_bytes(), b"seqt");
+        assert_eq!(list_1.iter().unwrap().fold(0, |acc, _| acc + 1), 1);
         assert_eq!(
-            list_1.iter()?.next()??.get_raw_child()?,
-            "final test".as_bytes()
+            list_1
+                .iter()
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+                .id()
+                .unwrap()
+                .as_bytes(),
+            b"test"
+        );
+        assert_eq!(
+            list_1
+                .iter()
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+                .get_raw_child()
+                .unwrap(),
+            b"final test"
         );
     }
-    Ok(())
 }

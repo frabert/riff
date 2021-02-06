@@ -47,7 +47,7 @@ impl RiffRam {
     /// # use riffu::{constants::RIFF_ID, error::RiffResult, eager::riff::RiffRam};
     /// # pub fn main() -> RiffResult<()> {
     /// let riff = RiffRam::from_file("test_assets/set_1.riff")?;
-    /// assert_eq!(riff.id().as_str()?, RIFF_ID);
+    /// assert_eq!(riff.id().as_bytes()?, RIFF_ID);
     /// # Ok(())
     /// # }
     /// ```
@@ -87,7 +87,7 @@ impl RiffRam {
     /// # use riffu::{constants::RIFF_ID, error::RiffResult, eager::riff::RiffRam};
     /// # pub fn main() -> RiffResult<()> {
     /// let riff = RiffRam::from_file("test_assets/set_1.riff")?;
-    /// assert_eq!(riff.iter()?.next()??.id().as_str()?, "test");
+    /// assert_eq!(riff.iter()?.next()??.id().as_bytes()?, "test");
     /// # Ok(())
     /// # }
     /// ```
@@ -116,7 +116,7 @@ impl RiffRam {
             let mut id_buff: [u8; 4] = [0; 4];
             id_buff.copy_from_slice(&data[0..4]);
             let id = FourCC { data: id_buff };
-            if id.as_str()? == RIFF_ID {
+            if id.as_bytes() == RIFF_ID {
                 Ok(RiffRam { data })
             } else {
                 Err(RiffError::InvalidRiffHeader)
@@ -209,8 +209,8 @@ impl<'a> ChunkRam<'a> {
 
     /// Returns the data that this `ChunkRam` hold as raw array of bytes.
     pub fn get_raw_child(&self) -> RiffResult<&'a [u8]> {
-        let offset = match self.id().as_str() {
-            Ok(RIFF_ID) | Ok(LIST_ID) => 12,
+        let offset = match self.id().as_bytes() {
+            RIFF_ID | LIST_ID => 12,
             _ => 8,
         };
         // NOTE: It ought to be possible to completely avoid this check because we control the
@@ -226,8 +226,8 @@ impl<'a> ChunkRam<'a> {
 
     /// Returns an iterator over the data of this `ChunkRam`.
     pub fn iter(&self) -> ChunkRamIter<'a> {
-        match self.id().as_str() {
-            Ok(RIFF_ID) | Ok(LIST_ID) => ChunkRamIter {
+        match self.id().as_bytes() {
+            RIFF_ID | LIST_ID => ChunkRamIter {
                 cursor: 0,
                 data: &self.data[12..],
                 error_occurred: false,
@@ -325,8 +325,8 @@ impl<'a> TryFrom<ChunkRam<'a>> for ChunkRamContent<'a> {
 
     /// Performs the conversion.
     fn try_from(chunk: ChunkRam<'a>) -> RiffResult<Self> {
-        match chunk.id().as_str() {
-            Ok(RIFF_ID) | Ok(LIST_ID) => {
+        match chunk.id().as_bytes() {
+            RIFF_ID | LIST_ID => {
                 let chunk_type = chunk.chunk_type()?;
                 let child_contents = chunk
                     .iter()
@@ -338,7 +338,7 @@ impl<'a> TryFrom<ChunkRam<'a>> for ChunkRamContent<'a> {
                     child_contents,
                 ))
             }
-            Ok(SEQT_ID) => {
+            SEQT_ID => {
                 let child_contents = chunk
                     .iter()
                     .map(|child| ChunkRamContent::try_from(child?))

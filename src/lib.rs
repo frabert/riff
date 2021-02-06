@@ -1,7 +1,4 @@
-#![feature(try_trait)]
-#![feature(iterator_fold_self)]
-
-use crate::error::{RiffError, RiffResult};
+use crate::error::RiffError;
 use std::convert::{TryFrom, TryInto};
 
 pub mod builder;
@@ -34,19 +31,12 @@ pub struct FourCC {
 ///    So we need to enforce correctness on that front too.
 /// 2. Are there other conversions that we are missing out on?
 impl FourCC {
-    pub fn new(input: &str) -> RiffResult<Self> {
-        Ok(FourCC {
-            data: input.as_bytes().try_into()?,
-        })
-    }
-
-    /// View `&self` struct as a `&str`.
-    pub fn as_str(&self) -> Result<&str, RiffError> {
-        Ok(std::str::from_utf8(&self.data)?)
+    pub fn new(data: &[u8; 4]) -> Self {
+        FourCC { data: *data }
     }
 
     /// View `&self` struct as a `&[u8]`.
-    pub fn as_bytes(&self) -> &[u8] {
+    pub fn as_bytes(&self) -> &[u8; 4] {
         &self.data
     }
 

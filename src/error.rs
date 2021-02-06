@@ -5,8 +5,6 @@ use std::fmt::Formatter;
 /// There are many, many ways reading into a RIFF file may fail.
 #[derive(Debug)]
 pub enum RiffError {
-    /// IO errors that will be emitted by standard IO.
-    Io(std::io::Error),
     /// Indicates that the provided payload length does not match the raw data's length.
     /// Since the data may be a list of `Chunk`s, it is more likely that this error is caused when payload's length > raw data's size.
     PayloadLenMismatch(PayloadLenMismatch),
@@ -15,16 +13,12 @@ pub enum RiffError {
     ChunkTooSmall(ChunkTooSmall),
     /// Indicates that the `Chunk` is too small to contain a `FourCC`.
     ChunkTooSmallForChunkType(ChunkTooSmallForChunkType),
-    Utf8Error(std::str::Utf8Error),
     /// Indicates that this is a malformed RIFF file.
     /// RIFF file requires that the first 4 bytes of the file contains the ASCII letters "RIFF".
     InvalidRiffHeader,
-    /// Indicates a `None` error caused by unwrapping a `None`.
-    NoneError(std::option::NoneError),
-    /// Indicates a failure when trying to convert from `&str` to a slice.
-    TryFromSliceError(std::array::TryFromSliceError),
     /// Indicates an attempt at appending a raw chunk into a chunk with
     MismatchChunkAdded,
+    Other(Box<dyn std::error::Error>),
 }
 
 #[derive(Debug)]
@@ -76,7 +70,7 @@ impl std::fmt::Display for RiffError {
 impl From<std::io::Error> for RiffError {
     /// Performs the conversion.
     fn from(v: std::io::Error) -> Self {
-        RiffError::Io(v)
+        RiffError::Other(Box::new(v))
     }
 }
 
@@ -84,15 +78,7 @@ impl From<std::io::Error> for RiffError {
 impl From<std::str::Utf8Error> for RiffError {
     /// Performs the conversion.
     fn from(v: std::str::Utf8Error) -> Self {
-        RiffError::Utf8Error(v)
-    }
-}
-
-/// Converts `std::option::NoneError`.
-impl From<std::option::NoneError> for RiffError {
-    /// Performs the conversion.
-    fn from(v: std::option::NoneError) -> Self {
-        RiffError::NoneError(v)
+        RiffError::Other(Box::new(v))
     }
 }
 
@@ -100,7 +86,7 @@ impl From<std::option::NoneError> for RiffError {
 impl From<std::array::TryFromSliceError> for RiffError {
     /// Performs the conversion.
     fn from(v: std::array::TryFromSliceError) -> Self {
-        RiffError::TryFromSliceError(v)
+        RiffError::Other(Box::new(v))
     }
 }
 

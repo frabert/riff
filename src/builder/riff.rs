@@ -182,7 +182,7 @@ impl RiffBuilder {
     /// Performs the conversions to owned array of bytes.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut result = Vec::new();
-        result.extend_from_slice(RIFF_ID.as_bytes());
+        result.extend_from_slice(RIFF_ID);
         result.extend_from_slice(&self.payload_len.to_le_bytes());
         result.extend_from_slice(&self.chunk_type.data);
         for x in &self.data {
