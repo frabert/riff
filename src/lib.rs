@@ -11,7 +11,7 @@ use std::io::SeekFrom;
 use std::convert::TryInto;
 
 /// A chunk id, also known as FourCC
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub struct ChunkId {
   /// The raw bytes of the id
   pub value: [u8; 4]
