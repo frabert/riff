@@ -176,17 +176,20 @@ pub struct Iter<'a, T>
 
 impl<'a, T> Iterator for Iter<'a, T>
     where T: Seek + Read {
-  type Item = Chunk;
+  type Item = std::io::Result<Chunk>;
 
   fn next(&mut self) -> Option<Self::Item> {
     if self.cur >= self.end {
       return None
     }
 
-    let chunk = Chunk::read(&mut self.stream, self.cur).unwrap();
+    let chunk = match Chunk::read(&mut self.stream, self.cur) {
+        Ok(chunk) => chunk,
+        Err(err) => return Some(Err(err)),
+    };
     let len = chunk.len() as u64;
     self.cur = self.cur + len + 8 + (len % 2);
-    Some(chunk)
+    Some(Ok(chunk))
   }
 }
 
